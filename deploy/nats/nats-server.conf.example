@@ -1,0 +1,33 @@
+# Wormhole bus: one nats-server with JetStream on a VM every user can reach.
+# Copy to nats-server.conf (private, never committed) and edit.
+#
+# Run:   nats-server -c /etc/nats/nats-server.conf
+# Then:  wormhole admin init --url tls://bus.example.internal:4222 --user admin
+#        (creates the WORMHOLE stream and the WORMHOLE_USERS bucket)
+
+server_name: wormhole-bus
+listen: 0.0.0.0:4222
+
+# Monitoring stays on localhost; tunnel to it, never expose it.
+http: 127.0.0.1:8222
+
+# TLS is the default. On a trusted LAN in v0 you may comment this block out,
+# but it must come back the moment the bus is reachable from outside it.
+tls {
+  cert_file: "/etc/nats/certs/bus.example.internal.crt"
+  key_file:  "/etc/nats/certs/bus.example.internal.key"
+  # ca_file and verify: true turn on client certificates (optional).
+}
+
+jetstream {
+  store_dir: /var/lib/nats/jetstream
+  max_memory_store: 256MB
+  max_file_store: 4GB
+}
+
+# Max payload: a 32 KB body plus envelope fields.
+max_payload: 64KB
+
+# Users and their permissions live in a separate file so that the same file
+# can be tested without TLS material.
+include ./accounts.conf

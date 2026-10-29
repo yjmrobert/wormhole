@@ -1,0 +1,22 @@
+# User unit for wormholed. Install with:
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/systemd/wormhole.service ~/.config/systemd/user/
+#   systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
+#   systemctl --user enable --now wormhole
+#
+# xdg-open and notify-send need the graphical session's environment; tying
+# the unit to graphical-session.target covers most desktops. `wormhole
+# doctor` tells you when the variables are missing.
+
+[Unit]
+Description=Wormhole daemon
+After=graphical-session.target network-online.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/wormhole daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

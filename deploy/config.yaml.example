@@ -1,0 +1,44 @@
+# Wormhole configuration. Keep this file private: chmod 600.
+# Placeholders: replace alice/bob and bus.example.internal with your own.
+
+# Your handle. Must equal the bus user your credentials authenticate as.
+handle: alice
+
+bus:
+  kind: nats
+  url: tls://bus.example.internal:4222
+  # v0 static users: a file holding only the password, mode 600, outside any git tree.
+  password_file: ~/.config/wormhole/password
+  # M4 JWT auth: a NATS .creds file instead of password_file.
+  # creds: ~/.config/wormhole/alice.creds
+  # tls_ca: ~/.config/wormhole/bus-ca.pem
+
+# Who may open a wormhole to you. A bare handle means inbox mode: a person
+# reads the message before any tool runs. auto mode runs the kickoff
+# headless with the read-only tool set below; opt in per sender.
+senders:
+  - bob
+  # - {handle: carol, mode: auto}
+
+limits:
+  per_sender_per_day: 20
+  per_day: 50
+  max_hops: 6
+
+copilot:
+  binary: copilot
+  # model: ""            # empty = the app default (admin policy may override)
+  workdir: ~/wormhole
+  # The --available-tools set for auto mode. Leave empty until M0 has
+  # established which tool names are read-only on your app version.
+  safe_tools: []
+
+# Map a repo named in an ask's context to a local checkout.
+repos:
+  # "<owner>/<repo>": /home/alice/src/repo
+
+daemon:
+  registry_interval: 5m
+  nak_backoff: 30s
+  open_app: true
+  notify: true

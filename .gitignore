@@ -1,0 +1,24 @@
+# build output
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# private deployment material: never commit real configs or credentials
+config.yaml
+*.creds
+*.nk
+*.pem
+*.key
+*.crt
+!deploy/**/*.example
+.wormhole-forbidden-terms
+threads.db*
+
+# editor noise
+.idea/
+.vscode/
+*.swp
+docs/skill.md
+site/

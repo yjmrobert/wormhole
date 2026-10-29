@@ -1,0 +1,81 @@
+# Wormhole v0 users: static users with per-subject permissions.
+# Included by nats-server.conf.example. Copy to accounts.conf (private, never
+# committed), replace every CHANGE_ME, and add one block per handle.
+#
+# Hash passwords with: nats server passwd   (bcrypt hashes are accepted in
+# the password field). Placeholders alice and bob are the two example users.
+#
+# What each user may do:
+#   publish   wh.inbox.*.<self>, wh.ack.*.<self>   send as themselves only
+#             wh.dlq.<self>                        park their own dead letters
+#   subscribe wh.inbox.<self>.>, wh.ack.<self>.>   read only their own traffic
+#   plus the JetStream API subjects for their own durable consumer
+#   (wh-<self>) and the WORMHOLE_USERS registry bucket.
+#
+# The admin user creates the stream and bucket (wormhole admin init) and is
+# the only one allowed to purge or delete. Keep its password off laptops.
+
+authorization {
+  users = [
+    {
+      user: admin
+      password: "CHANGE_ME_admin"
+    }
+    {
+      user: alice
+      password: "CHANGE_ME_alice"
+      permissions: {
+        publish: {
+          allow: [
+            "wh.inbox.*.alice", "wh.ack.*.alice", "wh.dlq.alice",
+            "$JS.API.INFO",
+            "$JS.API.STREAM.INFO.WORMHOLE",
+            "$JS.API.CONSUMER.CREATE.WORMHOLE.wh-alice", "$JS.API.CONSUMER.CREATE.WORMHOLE.wh-alice.>",
+            "$JS.API.CONSUMER.DURABLE.CREATE.WORMHOLE.wh-alice",
+            "$JS.API.CONSUMER.INFO.WORMHOLE.wh-alice",
+            "$JS.API.CONSUMER.MSG.NEXT.WORMHOLE.wh-alice",
+            "$JS.API.CONSUMER.DELETE.WORMHOLE.wh-alice",
+            "$JS.ACK.WORMHOLE.wh-alice.>",
+            "$JS.API.STREAM.INFO.KV_WORMHOLE_USERS",
+            "$JS.API.CONSUMER.CREATE.KV_WORMHOLE_USERS.>",
+            "$JS.API.CONSUMER.INFO.KV_WORMHOLE_USERS.>",
+            "$JS.API.CONSUMER.MSG.NEXT.KV_WORMHOLE_USERS.>",
+            "$JS.API.CONSUMER.DELETE.KV_WORMHOLE_USERS.>",
+            "$KV.WORMHOLE_USERS.alice"
+          ]
+        }
+        subscribe: {
+          allow: [ "wh.inbox.alice.>", "wh.ack.alice.>", "wh.dlq.alice", "_INBOX.>" ]
+        }
+      }
+    }
+    {
+      user: bob
+      password: "CHANGE_ME_bob"
+      permissions: {
+        publish: {
+          allow: [
+            "wh.inbox.*.bob", "wh.ack.*.bob", "wh.dlq.bob",
+            "$JS.API.INFO",
+            "$JS.API.STREAM.INFO.WORMHOLE",
+            "$JS.API.CONSUMER.CREATE.WORMHOLE.wh-bob", "$JS.API.CONSUMER.CREATE.WORMHOLE.wh-bob.>",
+            "$JS.API.CONSUMER.DURABLE.CREATE.WORMHOLE.wh-bob",
+            "$JS.API.CONSUMER.INFO.WORMHOLE.wh-bob",
+            "$JS.API.CONSUMER.MSG.NEXT.WORMHOLE.wh-bob",
+            "$JS.API.CONSUMER.DELETE.WORMHOLE.wh-bob",
+            "$JS.ACK.WORMHOLE.wh-bob.>",
+            "$JS.API.STREAM.INFO.KV_WORMHOLE_USERS",
+            "$JS.API.CONSUMER.CREATE.KV_WORMHOLE_USERS.>",
+            "$JS.API.CONSUMER.INFO.KV_WORMHOLE_USERS.>",
+            "$JS.API.CONSUMER.MSG.NEXT.KV_WORMHOLE_USERS.>",
+            "$JS.API.CONSUMER.DELETE.KV_WORMHOLE_USERS.>",
+            "$KV.WORMHOLE_USERS.bob"
+          ]
+        }
+        subscribe: {
+          allow: [ "wh.inbox.bob.>", "wh.ack.bob.>", "wh.dlq.bob", "_INBOX.>" ]
+        }
+      }
+    }
+  ]
+}
