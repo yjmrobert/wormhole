@@ -1,0 +1,41 @@
+site_name: Wormhole
+site_description: Ask a colleague's Copilot session a question from yours, across machines.
+site_url: https://yjmrobert.github.io/wormhole/
+repo_url: https://github.com/yjmrobert/wormhole
+repo_name: yjmrobert/wormhole
+edit_uri: edit/main/docs/
+docs_dir: docs
+strict: true
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+  palette:
+    - scheme: default
+      primary: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - scheme: slate
+      primary: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+nav:
+  - Home: index.md
+  - Install and configure: install.md
+  - Using it: usage.md
+  - Design: design.md
+  - Roadmap: roadmap.md
+  - M0 spike: m0-spike.md
+  - Skill: skill.md

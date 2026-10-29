@@ -19,8 +19,8 @@ phones home.
 Pre-1.0. The round trip works end to end against a real NATS server in the
 test suite; the pieces that touch the Copilot app (`copilot -p`, the
 `ghapp://` deep link, `--available-tools`) are wired but still need the M0
-spike in `docs/m0-spike.md` to be run on real machines. See `docs/design.md`
-for the design and `docs/roadmap.md` for milestones.
+spike in `docs/m0-spike.md` to be run on real machines. Docs: https://yjmrobert.github.io/wormhole/ (design, install, usage,
+roadmap). Binaries: https://github.com/yjmrobert/wormhole/releases.
 
 Linux only for now; macOS and Windows openers come later.
 

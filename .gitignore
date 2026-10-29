@@ -20,3 +20,5 @@ threads.db*
 .idea/
 .vscode/
 *.swp
+docs/skill.md
+site/
