@@ -57,15 +57,16 @@ FORM: Drawing sheet, first on the ordered list; seed: none (unavailable);
 the roll could not run in this environment and the world was pinned by the
 maintainer.
 
-Signature interaction: the schematic draws itself in on arrival (strokes
-and labels, 1.2 s, exponential ease-out, once) and the envelope travels
-the ask path and back along the reply path as the reader scrolls the home
-sheet; without scroll-timeline support it loops slowly; with reduced
-motion the drawing is shown complete and the envelope sits at the bus.
+Signature interaction (revised at the maintainer's request after the
+first review): figure 1 is a looped 16 s story of the round trip, with
+session cards appearing on each machine, a bus pulse, a receipt, and a
+four-step caption strip that advances with the phases. Reduced motion
+shows the finished state. The draw-on and the scroll-bound envelope are
+retired in its favour.
 
-Motion grammar: one authored moment (the draw-on), one scroll-bound
-element (the envelope), one ambient layer (star drift, dark theme only).
-Everything else is 150–300 ms state feedback with ease-out.
+Motion grammar: one authored loop (figure 1), one ambient layer (star
+drift, dark theme only). Everything else is 150–300 ms state feedback
+with ease-out.
 
 Cross-surface reach: the sheet frame, title block, index rail, drawing
 titles and code styling repeat on every page; the schematic is unique to

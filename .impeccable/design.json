@@ -23,5 +23,5 @@
   },
   "space": {"base": "4px", "rail": "232px", "contents": "220px", "gutter": "clamp(16px, 4vw, 48px)", "gridMinor": "24px", "gridMajor": "120px"},
   "radius": {"control": "3px", "block": "4px"},
-  "motion": {"ease": "cubic-bezier(0.16, 1, 0.3, 1)", "feedback": "150ms", "drawOn": "1.1s", "envelopeScroll": "0 to 1400px", "starDrift": "120s to 240s"}
+  "motion": {"ease": "cubic-bezier(0.16, 1, 0.3, 1)", "feedback": "150ms", "figureLoop": "16s", "starDrift": "120s to 240s"}
 }
