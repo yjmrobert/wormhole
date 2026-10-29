@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Home}}Wormhole{{else}}{{.Page.Title}} · Wormhole{{end}}</title>
+<meta name="description" content="{{if .Home}}Ask a colleague's Copilot session a question from yours, across machines.{{else}}{{.Page.Summary}}{{end}}">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="{{.Base}}assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{{.Base}}assets/fonts.css">
+<link rel="stylesheet" href="{{.Base}}assets/style.css">
+<script>
+(function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+</head>
+<body class="{{if .Home}}home{{else}}sheet-{{.Page.Slug}}{{end}}">
+<a class="skip" href="#content">Skip to content</a>
+{{.StarField}}
+<header class="masthead">
+  <a class="wordmark" href="{{.Base}}" aria-label="Wormhole home">
+    <svg class="mark" viewBox="0 0 34 20" aria-hidden="true" focusable="false"><circle cx="6" cy="10" r="4.25"/><circle cx="28" cy="10" r="4.25"/><path d="M10.2 10 C 14.5 1.5, 19.5 18.5, 23.8 10"/></svg>
+    <span>Wormhole</span>
+  </a>
+  <div class="search" role="search">
+    <label class="visually-hidden" for="q">Search the sheets</label>
+    <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.8 12.8 17 17"/></svg>
+    <input id="q" type="search" placeholder="Search the sheets" autocomplete="off" spellcheck="false" data-index="{{.Base}}search.json">
+    <div class="search-results" id="search-results" hidden></div>
+  </div>
+  <nav class="masthead-links" aria-label="Project links">
+    <a class="rev" href="{{.Repo}}/releases" title="Latest release">{{.Version}}</a>
+    <a href="{{.Repo}}">GitHub</a>
+    <button class="theme" type="button" aria-label="Switch to dark theme" data-theme-toggle>
+      <svg class="icon sun" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="3.6"/><path d="M10 1.5v2.6M10 15.9v2.6M1.5 10h2.6M15.9 10h2.6M4 4l1.8 1.8M14.2 14.2 16 16M4 16l1.8-1.8M14.2 5.8 16 4"/></svg>
+      <svg class="icon moon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7Z"/></svg>
+    </button>
+  </nav>
+</header>
+
+<div class="sheet">
+  <nav class="rail" aria-label="Drawing index">
+    <p class="rail-title">Drawing index</p>
+    <ol>
+    {{range .Sheets}}
+      <li><a href="{{.URL}}"{{if eq .Slug $.Page.Slug}} aria-current="page"{{end}}><span class="rail-n">{{pad .Number}}</span><span class="rail-label">{{.Label}}</span></a></li>
+    {{end}}
+    </ol>
+  </nav>
+
+  <main id="content" class="column">
+    <h1 class="title">{{.Page.Title}}</h1>
+    {{if .Home}}
+    <div class="lede">{{.Page.Lede}}</div>
+    <p class="actions">
+      <a class="button" href="{{.Base}}install/">Install</a>
+      <a class="button-link" href="{{.Base}}design/">Read the design</a>
+    </p>
+    {{template "schematic.html" .}}
+    {{end}}
+    <div class="prose">{{.Page.Body}}</div>
+
+    <nav class="pager" aria-label="Adjacent sheets">
+      {{if .Prev}}<a class="prev" href="{{.Prev.URL}}"><span class="pager-k">Previous sheet</span><span>{{.Prev.Label}}</span></a>{{else}}<span></span>{{end}}
+      {{if .Next}}<a class="next" href="{{.Next.URL}}"><span class="pager-k">Next sheet</span><span>{{.Next.Label}}</span></a>{{end}}
+    </nav>
+
+    <table class="title-block" aria-label="Title block">
+      <tr>
+        <th scope="row">Project</th><td>Wormhole</td>
+        <th scope="row">Sheet</th><td class="num">{{pad .Page.Number}} of {{pad .Total}}</td>
+      </tr>
+      <tr>
+        <th scope="row">Title</th><td>{{.Page.Label}}</td>
+        <th scope="row">Rev</th><td class="num">{{.Version}}</td>
+      </tr>
+      <tr>
+        <th scope="row">Source</th><td><a href="{{.Repo}}/blob/main/{{.Page.Source}}">{{.Page.Source}}</a></td>
+        <th scope="row">Issued</th><td class="num">{{.Built}}</td>
+      </tr>
+    </table>
+  </main>
+
+  {{if .Page.Headings}}
+  <aside class="contents">
+    <p class="contents-title">On this sheet</p>
+    <ol>
+    {{range .Page.Headings}}<li class="h{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
+    </ol>
+  </aside>
+  {{end}}
+</div>
+
+<footer class="colophon">
+  <p>Wormhole is an independent open-source project under Apache-2.0. <a href="{{.Repo}}/blob/main/SECURITY.md">Security policy</a> · <a href="{{.Repo}}/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="{{.Repo}}/releases">Releases</a></p>
+  <p>These sheets are rendered from the repository's docs by a small Go program; the site makes no third-party requests.</p>
+</footer>
+<script src="{{.Base}}assets/site.js" defer></script>
+</body>
+</html>

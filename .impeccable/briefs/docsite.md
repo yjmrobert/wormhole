@@ -1,0 +1,79 @@
+# Surface brief: documentation site (tools/docsite → GitHub Pages)
+
+Scope: the whole public documentation site, every page rendered from docs/.
+Visitor mode: Read. Code-led build (Read surface, no image generation).
+
+Audience and job: engineers evaluating or operating Wormhole; they arrive
+from the README or a release and need either the picture (how it works,
+is it safe) or one answer (a flag, a key, a behavior).
+
+Proof and content: the real docs under docs/, the real release tag, the
+real CLI table. Nothing invented: no adopters, no benchmarks, no demo.
+
+Constraints: static, subpath-hosted, no third-party requests, self-hosted
+fonts, WCAG AA both themes, reduced-motion path, Go-only toolchain.
+
+Unresolved: none blocking. Search is client-side over a generated index.
+
+## Direction contract
+
+THESIS: every page is a numbered engineering drawing of Wormhole, read
+on drafting paper; the frame (sheet border, title block, drawing index,
+section openers set as drawing titles) carries the world and the reading
+column stays a calm document. It refuses the docs-site default of a white
+page with a purple sidebar and a search box in a pill.
+
+OWN-WORLD: light theme is warm drafting paper (oklch ~96% chroma .012 hue
+80) with a faint blueprint-blue minor/major grid, navy ink text (oklch 27%
+.04 255), blueprint blue (oklch 52% .16 255) for links and the drawn
+schematic, red-lead (oklch 62% .19 35) for the one thing in motion, the
+envelope on the thread. Dark theme is the cyanotype negative: Prussian
+blue ground (oklch 23% .07 255) fading to near-black space at the edges,
+pale cyan-white lines and text, a sparse star field drifting behind the
+sheet. Type: Barlow Condensed 600 uppercase with +0.04em tracking for
+drawing titles and the title block, Barlow 400/500 for reading, JetBrains
+Mono for code only. Icons are authored single-stroke SVG. Sheet border
+with zone ticks on desktop; title block bottom-right of every sheet
+(title, sheet n of m, rev = release tag, project).
+
+STORY: the visitor lands on sheet 01 and sees the round trip drawn in
+front of them, understands in one viewport that a question leaves one
+machine and an answer comes back through a bus, reads that nothing runs
+on the other side until a person opens it, and goes to Install.
+
+FIRST VIEWPORT (home, 1440 wide): masthead strip across the top (wordmark
+left: a drawn wormhole mark plus WORMHOLE in condensed caps; search in the
+middle; release tag, GitHub link and theme switch right). Below it the
+sheet: left rail “DRAWING INDEX” listing the sheets; the column opens with
+the drawing title WORMHOLE, one-line thesis beneath it in reading type,
+then the full-column schematic: three stations left to right (alice’s
+session, the bus, bob’s machine) joined by the ask path above and the reply
+path below, leader lines to callouts (“wh.inbox.bob.alice”, “receipt”,
+“copilot -p”), the envelope on the path. The primary action, “Install”,
+sits as a drawn button under the thesis line; “Read the design” beside it
+as a link.
+
+FORM: Drawing sheet, first on the ordered list; seed: none (unavailable);
+the roll could not run in this environment and the world was pinned by the
+maintainer.
+
+Signature interaction: the schematic draws itself in on arrival (strokes
+and labels, 1.2 s, exponential ease-out, once) and the envelope travels
+the ask path and back along the reply path as the reader scrolls the home
+sheet; without scroll-timeline support it loops slowly; with reduced
+motion the drawing is shown complete and the envelope sits at the bus.
+
+Motion grammar: one authored moment (the draw-on), one scroll-bound
+element (the envelope), one ambient layer (star drift, dark theme only).
+Everything else is 150–300 ms state feedback with ease-out.
+
+Cross-surface reach: the sheet frame, title block, index rail, drawing
+titles and code styling repeat on every page; the schematic is unique to
+sheet 01, smaller drawings may open other sheets later.
+
+Honest risk: the heaviest of the three directions; scroll-driven motion
+needs the fallback; the title block must not become a kicker.
+
+FINISH: unreviewed and undocumented is unfinished; this build ends with
+the finish review, the verdict, DESIGN.md, and every shipping raster
+carrying its provenance.

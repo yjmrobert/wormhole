@@ -2,7 +2,7 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "mkdocs.yml", "README.md", "skills/**", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "tools/docsite/**", "skills/**", ".github/workflows/docs.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,13 +16,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pip install mkdocs-material==9.5.39
-      - name: render the skill as a docs page
-        run: scripts/docs-skill-page.sh > docs/skill.md
-      - run: mkdocs build --strict
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build the site
+        run: |
+          set -e
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo dev)
+          go run ./tools/docsite -root . -out site -base /wormhole/ -version "$VERSION"
       - uses: actions/configure-pages@v5
         with:
           enablement: true
