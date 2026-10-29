@@ -66,8 +66,10 @@ scripts/m0/03-resume.sh       # creates a session, opens it, appends a turn with
 ```
 
 Pass: the appended turn is visible in the app on the already-open session
-without reopening it. This decides whether M2 can land replies in the
-asking session instead of a new `Reply from ^bob` session.
+without reopening it. The daemon already appends replies this way by
+default (`daemon.reply_in_place`, falling back to a new `Reply from ^bob`
+session when the resume fails); a "never" here means the default should
+flip to `false`.
 
 ## Test 4: what does `--available-tools` restrict in `-p` mode?
 

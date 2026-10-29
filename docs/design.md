@@ -200,7 +200,14 @@ On an inbound message the daemon, in order:
    `delivered`, then best-effort opens the deep link and notifies.
 5. For a reply or message: requires the sender to be the thread's peer (or
    an allowlisted sender when the thread is unknown, as after a reinstall),
-   then materializes a `Reply from ^<peer>` session the same way.
+   then appends the text to the session the thread already belongs to
+   (`copilot -p <text> --resume=<id>`, under the same tool restriction):
+   the session that asked, when `wormhole ask` ran in a shell that exposed
+   its session id, or the session an earlier message materialized. It opens
+   a `Reply from ^<peer>` session instead when there is no such session,
+   when `daemon.reply_in_place` is off, or when the resume fails (the
+   session is gone or the app holds it). Inbox mode stages the text and
+   `wormhole open` makes the same choice later.
 6. For an ack: updates the outbound thread to `delivered` or `rejected`.
 
 Any failure before the ack is a nak with backoff (`daemon.nak_backoff`,
@@ -271,8 +278,10 @@ and the app lists the session on its next scan.
 Answered by the M0 spike (`docs/m0-spike.md`):
 
 - Does the app reflect a turn appended with `copilot --resume` while the
-  session is listed? Decides whether replies can land in the asking session
-  instead of a new one.
+  session is listed? The daemon appends replies to the asking session by
+  default (`daemon.reply_in_place`) and falls back to a new session when
+  the resume fails; this decides whether the appended turn shows without
+  reopening the session, and whether the default can stay on.
 - What does `--available-tools` restrict in `-p` mode, and which names form
   a safe read-only set? Decides the shipped default for
   `copilot.safe_tools`.

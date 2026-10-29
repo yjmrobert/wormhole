@@ -89,6 +89,8 @@ copilot:
   safe_tools: []                    # the --available-tools set for auto mode (an M0 output)
 repos:
   "<owner>/<repo>": /home/alice/src/repo
+daemon:
+  reply_in_place: true              # append replies to the session that asked; false: new session
 ```
 
 The daemon refuses to start if this file is readable by other users or if

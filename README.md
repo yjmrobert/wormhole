@@ -35,6 +35,10 @@ alice's daemon ◀── bus ◀──wormhole reply── bob's session (agent 
   him; nothing runs until he opens it with `wormhole open`.
 - **Auto mode (opt-in per sender).** Bob's daemon runs the kickoff headless
   with a read-only tool set, so Bob's agent answers in seconds.
+- **Replies land where the ask was made.** Alice's daemon appends Bob's
+  answer to the session that asked (`copilot --resume`), so her agent can
+  act on it; a separate `Reply from ^bob` session only when that session
+  is unknown or cannot be resumed (`daemon.reply_in_place`).
 
 Either way the sender is bound by the bus subject (`wh.inbox.bob.alice`) and
 enforced by the server's per-user permissions, not by anything in the
@@ -69,11 +73,11 @@ Then, in a Copilot session with the `wormhole` skill installed:
 ## CLI
 
 ```
-wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--yes]
+wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes]
 wormhole reply <thread_id> "<text>"            # from inside a relayed session
 wormhole send <user> --thread <id> "<text>"    # free-form follow-up on an open thread
 wormhole inbox                                 # staged inbound messages waiting for you
-wormhole open <thread_id>                      # start/show the session; prints the --resume fallback
+wormhole open <thread_id>                      # run a staged message in its session and show it; prints the --resume fallback
 wormhole threads [--open] [--peer <user>]      # local thread map
 wormhole users                                 # handles on the bus, with presence
 wormhole daemon [--once] [--pause|--resume]    # the subscriber; pause is the local kill switch

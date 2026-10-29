@@ -114,6 +114,11 @@ type Daemon struct {
 	NakBackoff       time.Duration `yaml:"nak_backoff"`
 	OpenApp          *bool         `yaml:"open_app"`
 	Notify           *bool         `yaml:"notify"`
+	// ReplyInPlace appends a reply to the session that asked (or to the
+	// session already tied to the thread) instead of opening a new
+	// "Reply from" session. A new session is still used when the asking
+	// session's id is unknown or the resume fails.
+	ReplyInPlace *bool `yaml:"reply_in_place"`
 }
 
 // Leak-guard errors.
@@ -231,6 +236,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Daemon.Notify == nil {
 		c.Daemon.Notify = ptr(true)
+	}
+	if c.Daemon.ReplyInPlace == nil {
+		c.Daemon.ReplyInPlace = ptr(true)
 	}
 	for k, v := range c.Repos {
 		c.Repos[k] = Expand(v)
@@ -411,4 +419,7 @@ daemon:
   nak_backoff: 30s
   open_app: true
   notify: true
+  # A reply is appended to the session that asked (copilot --resume) so the
+  # asking agent can act on it; false always opens a new "Reply from" session.
+  reply_in_place: true
 `

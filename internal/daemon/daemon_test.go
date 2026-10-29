@@ -417,3 +417,137 @@ func TestAckUpdatesOutboundThread(t *testing.T) {
 		t.Fatalf("thread = %+v", th)
 	}
 }
+
+// outboundThread seeds a thread bob opened to alice from session bob-root.
+func outboundThread(t *testing.T, f *fixture, root string) envelope.Envelope {
+	t.Helper()
+	ctx := context.Background()
+	ask := envelope.NewAsk(envelope.Peer{User: "bob", Host: "bob-laptop", SessionID: root}, "alice", "Thoughts on Y?", time.Now())
+	if err := f.store.Put(ctx, threads.Thread{ID: ask.ID, Peer: "alice", Direction: threads.DirectionOut, State: threads.StateDelivered, RootSessionID: root, Title: "Thoughts on Y?", Workdir: "/tmp/wh-test", ExpiresAt: ask.ExpiresAt}); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.store.AddMessage(ctx, ask, threads.DirectionOut)
+	return ask
+}
+
+func TestReplyResumesAskingSessionInAutoMode(t *testing.T) {
+	f := newFixture(t, autoCfg)
+	runDaemon(t, f)
+	ctx := context.Background()
+	ask := outboundThread(t, f, "bob-root")
+
+	reply := envelope.NewFollowUp(envelope.TypeReply, ask, envelope.Peer{User: "alice", Host: "alice-laptop"}, "bob", "Y is fine.", time.Now())
+	f.deliver(reply, "alice")
+	calls := f.waitOps(t, 3)
+	r := calls[0]
+	if r.Op != "resume" || r.Session.ID != "bob-root" || r.Session.Model != "test-model" || strings.Join(r.Session.AvailableTools, ",") != "view,grep" || r.Session.Workdir != "/tmp/wh-test" {
+		t.Fatalf("first call = %+v", r)
+	}
+	if !strings.Contains(r.Session.Kickoff, "Reply from ^alice on thread "+ask.ID) || !strings.Contains(r.Session.Kickoff, "session bob-root") || !strings.HasSuffix(r.Session.Kickoff, "---\nY is fine.") {
+		t.Fatalf("kickoff = %q", r.Session.Kickoff)
+	}
+	if calls[1].Op != "open" || calls[1].SessionID != "bob-root" || calls[2].Op != "notify" || !strings.Contains(calls[2].Title, "^alice replied") {
+		t.Fatalf("ops = %v", f.app.Ops())
+	}
+	th, _ := f.store.Get(ctx, ask.ID)
+	if th.State != threads.StateReplied || th.LocalSessionID != "bob-root" || th.StagedKickoff != "" || !th.Opened || th.Mode != threads.ModeAuto {
+		t.Fatalf("thread = %+v", th)
+	}
+
+	// A later message on the thread continues the same session.
+	msg := envelope.NewFollowUp(envelope.TypeMessage, reply, envelope.Peer{User: "alice", Host: "alice-laptop"}, "bob", "One more thing.", time.Now())
+	f.deliver(msg, "alice")
+	calls = f.waitOps(t, 6)
+	if calls[3].Op != "resume" || calls[3].Session.ID != "bob-root" || !strings.HasSuffix(calls[3].Session.Kickoff, "---\nOne more thing.") {
+		t.Fatalf("follow-up call = %+v", calls[3])
+	}
+	if calls[4].Op != "open" || calls[4].SessionID != "bob-root" {
+		t.Fatalf("ops = %v", f.app.Ops())
+	}
+}
+
+func TestReplyFallsBackToNewSessionWhenResumeFails(t *testing.T) {
+	f := newFixture(t, autoCfg)
+	f.app.Fail = func(op string) error {
+		if op == "resume" {
+			return errors.New("session is in use by the app")
+		}
+		return nil
+	}
+	runDaemon(t, f)
+	ctx := context.Background()
+	ask := outboundThread(t, f, "bob-root")
+	reply := envelope.NewFollowUp(envelope.TypeReply, ask, envelope.Peer{User: "alice"}, "bob", "Y is fine.", time.Now())
+	f.deliver(reply, "alice")
+	calls := f.waitOps(t, 4)
+	if calls[0].Op != "resume" || calls[0].Session.ID != "bob-root" {
+		t.Fatalf("first call = %+v", calls[0])
+	}
+	c := calls[1]
+	if c.Op != "create" || c.Session.Name != "Reply from ^alice" || c.Session.ID == "bob-root" || c.Session.ID == "" || strings.Join(c.Session.AvailableTools, ",") != "view,grep" {
+		t.Fatalf("fallback = %+v", c)
+	}
+	if calls[2].Op != "open" || calls[2].SessionID != c.Session.ID || calls[3].Op != "notify" {
+		t.Fatalf("ops = %v", f.app.Ops())
+	}
+	th, _ := f.store.Get(ctx, ask.ID)
+	if th.State != threads.StateReplied || th.LocalSessionID != c.Session.ID || th.StagedKickoff != "" {
+		t.Fatalf("thread = %+v", th)
+	}
+	acks := f.waitAck(t, 1)
+	if acks[0].Env.Body != "delivered" {
+		t.Fatalf("receipt = %+v", acks[0].Env)
+	}
+}
+
+func TestReplyOpensNewSessionWithoutAskingSessionOrWhenDisabled(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  string
+		root string
+	}{
+		{"no asking session id", autoCfg, ""},
+		{"reply_in_place off", strings.Replace(autoCfg, "daemon: {nak_backoff: 10ms}", "daemon: {nak_backoff: 10ms, reply_in_place: false}", 1), "bob-root"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, tc.cfg)
+			runDaemon(t, f)
+			ask := outboundThread(t, f, tc.root)
+			reply := envelope.NewFollowUp(envelope.TypeReply, ask, envelope.Peer{User: "alice"}, "bob", "Y is fine.", time.Now())
+			f.deliver(reply, "alice")
+			calls := f.waitOps(t, 3)
+			if calls[0].Op != "create" || calls[0].Session.Name != "Reply from ^alice" || calls[1].Op != "open" || calls[2].Op != "notify" {
+				t.Fatalf("ops = %v calls = %+v", f.app.Ops(), calls)
+			}
+		})
+	}
+}
+
+func TestInboxMessageOnOpenThreadStagesWithoutShowing(t *testing.T) {
+	// bob already opened a session for alice's ask (inbox mode); a follow-up
+	// message must wait in the inbox and remember which session to resume.
+	f := newFixture(t, inboxCfg)
+	runDaemon(t, f)
+	ctx := context.Background()
+	ask := aliceAsk("What do you think about X?")
+	_ = f.store.Put(ctx, threads.Thread{ID: ask.ID, Peer: "alice", Direction: threads.DirectionIn, Mode: threads.ModeInbox, State: threads.StateDelivered, LocalSessionID: "bob-sess", Opened: true, Title: "What do you think about X?", ExpiresAt: ask.ExpiresAt})
+	_ = f.store.AddMessage(ctx, ask, threads.DirectionIn)
+	msg := envelope.NewFollowUp(envelope.TypeMessage, ask, envelope.Peer{User: "alice"}, "bob", "Also, W?", time.Now())
+	f.deliver(msg, "alice")
+	calls := f.waitOps(t, 1)
+	if calls[0].Op != "notify" || !strings.Contains(calls[0].Title, "^alice replied") {
+		t.Fatalf("calls = %+v", calls)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if ops := f.app.Ops(); len(ops) != 1 {
+		t.Fatalf("unexpected app calls in inbox mode: %v", ops)
+	}
+	th, _ := f.store.Get(ctx, ask.ID)
+	if th.LocalSessionID != "bob-sess" || !th.Opened || !strings.HasSuffix(th.StagedKickoff, "---\nAlso, W?") {
+		t.Fatalf("thread = %+v", th)
+	}
+	if got := ContinueSession(f.bob.cfg, th); got != "bob-sess" {
+		t.Fatalf("ContinueSession = %q", got)
+	}
+}

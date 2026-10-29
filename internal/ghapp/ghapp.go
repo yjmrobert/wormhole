@@ -21,14 +21,16 @@ import (
 	"time"
 )
 
-// Session describes a session to create.
+// Session describes a session to create, or (for Resume) the session to
+// append a turn to.
 type Session struct {
-	// ID is the client-chosen session UUID (--session-id).
+	// ID is the client-chosen session UUID (--session-id), or the session
+	// being resumed (--resume).
 	ID string
-	// Name is the sidebar name (-n).
+	// Name is the sidebar name (-n). Ignored by Resume.
 	Name string
-	// Kickoff is the first prompt (-p). It is passed as one argument and
-	// never interpolated into a shell string.
+	// Kickoff is the prompt (-p). It is passed as one argument and never
+	// interpolated into a shell string.
 	Kickoff string
 	// Workdir is the directory the session starts in.
 	Workdir string
@@ -42,8 +44,9 @@ type Session struct {
 type App interface {
 	// Create starts a new session and runs the kickoff headless.
 	Create(ctx context.Context, s Session) error
-	// Resume appends prompt as a new turn on an existing session.
-	Resume(ctx context.Context, sessionID, prompt, workdir string) error
+	// Resume appends s.Kickoff as a new turn on the existing session s.ID
+	// and runs it headless, honoring Model and AvailableTools.
+	Resume(ctx context.Context, s Session) error
 	// Open shows the session in the app. Best effort.
 	Open(ctx context.Context, sessionID string) error
 	// Notify raises a desktop notification. Best effort.
@@ -145,9 +148,23 @@ func (e *Exec) Create(ctx context.Context, s Session) error {
 	return e.run(ctx, s.Workdir, e.Binary, args...)
 }
 
-// Resume runs: copilot -p <prompt> --resume=<id>.
-func (e *Exec) Resume(ctx context.Context, sessionID, prompt, workdir string) error {
-	return e.run(ctx, workdir, e.Binary, "-p", prompt, "--resume="+sessionID)
+// Resume runs: copilot -p <prompt> --resume=<id> [--model m]
+// [--available-tools a,b]. It fails when the session does not exist on
+// this machine or the app holds it locked; callers fall back to Create.
+func (e *Exec) Resume(ctx context.Context, s Session) error {
+	if s.Workdir != "" {
+		if err := os.MkdirAll(s.Workdir, 0o755); err != nil {
+			return fmt.Errorf("workdir: %w", err)
+		}
+	}
+	args := []string{"-p", s.Kickoff, "--resume=" + s.ID}
+	if s.Model != "" {
+		args = append(args, "--model", s.Model)
+	}
+	if len(s.AvailableTools) > 0 {
+		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
+	}
+	return e.run(ctx, s.Workdir, e.Binary, args...)
 }
 
 // Open runs: xdg-open ghapp://sessions/<id>.
@@ -199,8 +216,8 @@ func (r *Recorder) Create(ctx context.Context, s Session) error {
 	return r.record(Call{Op: "create", Session: s})
 }
 
-func (r *Recorder) Resume(ctx context.Context, sessionID, prompt, workdir string) error {
-	return r.record(Call{Op: "resume", SessionID: sessionID, Prompt: prompt})
+func (r *Recorder) Resume(ctx context.Context, s Session) error {
+	return r.record(Call{Op: "resume", Session: s, SessionID: s.ID, Prompt: s.Kickoff})
 }
 
 func (r *Recorder) Open(ctx context.Context, sessionID string) error {

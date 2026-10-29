@@ -8,8 +8,15 @@ With the skill installed, write what you would write to a colleague:
 
 The agent resolves `bob` with `wormhole users`, writes a self-contained
 kickoff, shows it to you, and on your yes runs `wormhole ask`. You get a
-thread id. The reply arrives as a new session named `Reply from ^bob`, or
-in your inbox if you run inbox mode for bob.
+thread id. The reply is appended to the session that asked, so the agent
+there can act on it; it opens a new session named `Reply from ^bob` only
+when the asking session is unknown or cannot be resumed. If you run inbox
+mode for bob it waits in your inbox instead until `wormhole open`.
+
+The CLI learns which session asked from `COPILOT_AGENT_SESSION_ID` in the
+agent's shell; `wormhole ask --session <id>` sets it explicitly. Without
+either, replies always open a new session. `daemon.reply_in_place: false`
+turns the behavior off.
 
 ## What the recipient sees
 
@@ -43,11 +50,11 @@ read from stdin.
 
 | Command | What it does |
 | --- | --- |
-| `wormhole ask <user> "<prompt>" [--repo o/r] [--context "PR #1"] [--yes]` | Open a thread. Shows the envelope and asks for confirmation unless `--yes`. |
+| `wormhole ask <user> "<prompt>" [--repo o/r] [--context "PR #1"] [--session <id>] [--yes]` | Open a thread. Shows the envelope and asks for confirmation unless `--yes`. `--session` names the asking session when the shell does not. |
 | `wormhole reply <thread_id> "<text>" [--yes]` | Answer on a thread, from inside a relayed session. |
 | `wormhole send <user> --thread <id> "<text>" [--yes]` | Free-form follow-up on an open thread. |
 | `wormhole inbox` | Staged inbound asks and replies waiting for you. |
-| `wormhole open <thread_id>` | Start the staged session if needed and show it in the app; prints `copilot --resume=<id>` as a fallback. |
+| `wormhole open <thread_id>` | Run a staged message: append it to the session the thread belongs to, or start a new session; then show it in the app. Prints `copilot --resume=<id>` as a fallback. |
 | `wormhole threads [--open] [--peer <user>]` | Local thread map: thread, peer, state, session, last message. |
 | `wormhole users` | Handles on the bus with host, mode and presence. |
 | `wormhole daemon [--once] [--pause\|--resume]` | Run the subscriber. `--pause` is the local kill switch. |
