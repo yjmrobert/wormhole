@@ -1,0 +1,32 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: vet
+        run: go vet ./...
+      - name: test
+        # The nats adapter and e2e tests start an embedded nats-server; no
+        # services or Docker needed.
+        run: go test -race ./...
+      - name: build
+        run: go build -trimpath ./cmd/wormhole
+      - name: placeholder policy
+        # Example configs only: a real config, creds or TLS key in the tree
+        # fails the build.
+        run: |
+          set -e
+          bad=$(git ls-files | grep -E '(^|/)(config\.yaml|accounts\.conf|nats-server\.conf)$|\.(creds|nk|key|pem)$' || true)
+          if [ -n "$bad" ]; then echo "non-example private files committed:"; echo "$bad"; exit 1; fi
