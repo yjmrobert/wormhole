@@ -86,9 +86,12 @@ mark and title-block rows stack.
   current sheet's number is red.
 - Sheet title, lede (home only), primary action as a drawn button (ink
   fill, condensed caps, arrow), secondary action as an underlined link.
-- Schematic (home only): inline SVG, three stations, ask lane above, reply
-  lane below, leader lines to callouts, an envelope on the thread. Strokes
-  carry `pathLength="1"` so one dasharray serves the draw-on.
+- Figure 1 (home only): inline SVG in two layouts (landscape over 720px,
+  stacked portrait below). Devices are filled screens with a base bar and
+  session cards inside; the bus is a cylinder; lanes carry the subjects
+  and the words ask and reply; a caption strip with step numbers and
+  ticks sits under a rule. No leader lines: every explanation lives in the
+  caption strip.
 - Prose: h2 as drawing title with rule; inline code in a bordered chip;
   code blocks with a copy control that appears on hover; tables ruled with
   condensed-caps headers inside a horizontal scroll wrapper; blockquotes
@@ -108,20 +111,22 @@ offset 0.18em, tabular numerals in tables and the title block.
 
 ## Motion
 
-Exactly three movements:
+Two movements, both ambient, both stoppable:
 
-1. The authored moment: the schematic draws itself on arrival (1.1s,
-   `cubic-bezier(0.16, 1, 0.3, 1)`, staggered: stations, lanes, leaders,
-   then labels fade). Once.
-2. The scroll-bound element: the envelope travels the ask lane and returns
-   on the reply lane over the first 1400px of scroll (`animation-timeline:
-   scroll(root)`); without scroll timelines it loops over 18s.
-3. The ambient layer: three star layers drift upward over 120 to 240s, dark
-   theme only.
+1. Figure 1 plays the round trip as one looped story on a 16 s timeline
+   (`--loop`): the envelope leaves Alice's session, the bus pulses as it
+   stores the message, a session card appears on Bob's machine with a
+   receipt back along the ask lane, Bob's answer card appears, the
+   envelope returns on the reply lane, and a "Reply from ^bob" card lands
+   on Alice's machine. A four-step caption strip under the drawing
+   advances with the phases; its ticks mark the current step. Every
+   element is keyed to the same timeline in percentages, so the story
+   cannot drift apart. Under `prefers-reduced-motion` the drawing shows
+   the finished state with step one's caption.
+2. Three star layers drift upward over 120 to 240 s, dark theme only, and
+   hold still under reduced motion.
 
-Everything else is 150ms state feedback with the same ease-out. Under
-`prefers-reduced-motion` the drawing renders complete, the envelope rests
-at the bus, and the stars hold still.
+Everything else is 150 ms state feedback with `cubic-bezier(0.16, 1, 0.3, 1)`.
 
 ## Voice
 

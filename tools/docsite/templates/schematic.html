@@ -1,70 +1,170 @@
 <figure class="schematic" aria-labelledby="schematic-caption">
-  <div class="schematic-scroll">
-  <svg class="drawing" viewBox="0 0 1000 400" role="img" aria-label="Schematic of the round trip: alice's session publishes an ask to the bus, bob's daemon materializes it as a session on bob's machine, and the reply travels back through the bus to alice.">
+  <svg class="drawing drawing-landscape" viewBox="0 56 1000 374" role="img" aria-label="Animated schematic of the round trip: Alice's agent publishes an ask, the bus holds it, Bob's daemon opens a session on his machine and sends a receipt, and the reply travels back to Alice's session.">
     <defs>
-      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      <marker id="ah" class="marker-lane" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
+      <marker id="ah-soft" class="marker-leader" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
     </defs>
 
-    <!-- stations -->
-    <g class="station draw d0">
-      <rect x="40" y="128" width="170" height="108" rx="5" pathLength="1"/>
-      <path d="M24 250 H226 M40 236 L28 250 M210 236 L222 250" pathLength="1"/>
-      <path class="hair" d="M58 146 h134 M58 160 h92 M58 174 h110" pathLength="1"/>
-    </g>
-    <g class="station draw d0">
-      <rect x="410" y="150" width="180" height="90" rx="45" pathLength="1"/>
-      <path class="hair" d="M444 177 h112 M444 195 h112 M444 213 h112" pathLength="1"/>
-    </g>
-    <g class="station draw d0">
-      <rect x="790" y="128" width="170" height="108" rx="5" pathLength="1"/>
-      <path d="M774 250 H976 M790 236 L778 250 M960 236 L972 250" pathLength="1"/>
-      <path class="hair" d="M808 146 h134 M808 160 h70 M808 174 h118" pathLength="1"/>
-    </g>
-
     <!-- lanes -->
-    <g class="lane draw d1">
-      <path d="M216 170 H404" pathLength="1" marker-end="url(#arrow)"/>
-      <path d="M596 170 H784" pathLength="1" marker-end="url(#arrow)"/>
-      <path d="M784 222 H596" pathLength="1" marker-end="url(#arrow)"/>
-      <path d="M404 222 H216" pathLength="1" marker-end="url(#arrow)"/>
+    <g class="lane">
+      <path d="M284 160 H424" marker-end="url(#ah)"/>
+      <path d="M576 160 H716" marker-end="url(#ah)"/>
+      <path d="M716 218 H576" marker-end="url(#ah)"/>
+      <path d="M424 218 H284" marker-end="url(#ah)"/>
+    </g>
+    <g class="lane-label">
+      <text x="354" y="148" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
+      <text x="646" y="148" text-anchor="middle" class="t-lane">ask</text>
+      <text x="354" y="238" text-anchor="middle" class="t-lane">reply</text>
+      <text x="646" y="238" text-anchor="middle" class="t-code t-small">wh.inbox.alice.bob</text>
+    </g>
+    <!-- receipt: a short acknowledgement back along the ask lane -->
+    <g class="receipt">
+      <path d="M708 192 H584" marker-end="url(#ah-soft)"/>
+      <text x="646" y="184" text-anchor="middle" class="t-code t-small">receipt</text>
     </g>
 
-    <!-- leader lines -->
-    <g class="leader draw d2">
-      <path d="M690 164 V74 H560" pathLength="1"/>
-      <circle cx="690" cy="170" r="2.2"/>
-      <path d="M500 246 V338 H454" pathLength="1"/>
-      <circle cx="500" cy="240" r="2.2"/>
-      <path d="M875 256 V338 H826" pathLength="1"/>
-      <circle cx="875" cy="250" r="2.2"/>
+    <!-- Alice's laptop -->
+    <g class="device">
+      <rect class="screen" x="62" y="96" width="222" height="146" rx="8"/>
+      <rect class="base" x="44" y="246" width="258" height="9" rx="4.5"/>
+      <g class="card">
+        <rect x="80" y="112" width="168" height="52" rx="4"/>
+        <text x="92" y="131" class="t-card">Alice's session</text>
+        <text x="92" y="151" class="t-code t-small">wormhole ask bob "…"</text>
+      </g>
+      <g class="card card-reply-alice">
+        <rect x="80" y="172" width="168" height="56" rx="4"/>
+        <text x="92" y="191" class="t-card">Reply from ^bob</text>
+        <text x="92" y="211" class="t-code t-small">I think Y, because Z.</text>
+      </g>
+      <text x="173" y="290" text-anchor="middle" class="t-title">Alice's machine</text>
     </g>
 
-    <!-- labels -->
-    <g class="label fade d2">
-      <text x="125" y="286" text-anchor="middle" class="t-title">Alice's session</text>
-      <text x="125" y="306" text-anchor="middle" class="t-code">wormhole ask bob "…"</text>
-      <text x="500" y="286" text-anchor="middle" class="t-title">Bus · NATS JetStream</text>
-      <text x="500" y="306" text-anchor="middle" class="t-code">stream WORMHOLE, subjects wh.&gt;</text>
-      <text x="875" y="286" text-anchor="middle" class="t-title">Bob's machine</text>
-      <text x="875" y="306" text-anchor="middle" class="t-code">wormholed, then copilot -p</text>
+    <!-- the bus -->
+    <g class="bus">
+      <path class="body" d="M432 142 V232 A68 16 0 0 0 568 232 V142"/>
+      <ellipse class="lid" cx="500" cy="142" rx="68" ry="16"/>
+      <path class="hair" d="M452 176 H548 M452 194 H548 M452 212 H548"/>
+      <ellipse class="pulse" cx="500" cy="142" rx="68" ry="16"/>
+      <text x="500" y="290" text-anchor="middle" class="t-title">Bus · NATS JetStream</text>
+      <text x="500" y="308" text-anchor="middle" class="t-code t-small">stream WORMHOLE · subjects wh.&gt;</text>
+    </g>
 
-      <text x="310" y="158" text-anchor="middle" class="t-lane">ask</text>
-      <text x="690" y="158" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
-      <text x="690" y="242" text-anchor="middle" class="t-lane">reply</text>
-      <text x="310" y="242" text-anchor="middle" class="t-code t-small">wh.inbox.alice.bob</text>
-
-      <text x="552" y="78" text-anchor="end" class="t-note">The subject names the sender. The server refuses a forged handle.</text>
-      <text x="446" y="342" text-anchor="end" class="t-note">Durable: a sleeping laptop's messages wait for it.</text>
-      <text x="818" y="342" text-anchor="end" class="t-note">Inbox mode: nothing runs until Bob opens it.</text>
-      <text x="818" y="360" text-anchor="end" class="t-note">Auto mode: copilot -p with read-only tools.</text>
+    <!-- Bob's laptop -->
+    <g class="device">
+      <rect class="screen" x="716" y="96" width="222" height="146" rx="8"/>
+      <rect class="base" x="698" y="246" width="258" height="9" rx="4.5"/>
+      <g class="card card-bob">
+        <rect x="734" y="112" width="186" height="52" rx="4"/>
+        <text x="746" y="131" class="t-card">^alice: what do you think…</text>
+        <text x="746" y="151" class="t-code t-small">copilot -p · inbox or auto</text>
+      </g>
+      <g class="card card-reply-bob">
+        <rect x="734" y="172" width="186" height="56" rx="4"/>
+        <text x="746" y="191" class="t-card">Bob's agent answers</text>
+        <text x="746" y="211" class="t-code t-small">wormhole reply 01JB… "…"</text>
+      </g>
+      <text x="827" y="290" text-anchor="middle" class="t-title">Bob's machine</text>
     </g>
 
     <!-- the envelope on the thread -->
     <g class="envelope" aria-hidden="true">
-      <rect x="-11" y="-7" width="22" height="14" rx="1.5"/>
-      <path d="M-11 -7 L0 2 L11 -7"/>
+      <rect x="-12" y="-8" width="24" height="16" rx="2"/>
+      <path d="M-12 -8 L0 2 L12 -8"/>
+    </g>
+
+    <!-- caption strip -->
+    <g class="captions">
+      <path class="rule" d="M40 340 H960"/>
+      <g class="step step-1"><text x="40" y="378" class="t-step">01</text><text x="76" y="378" class="t-caption">Alice's agent publishes the ask on <tspan class="t-code">wh.inbox.bob.alice</tspan>; the subject names the sender, so a forged handle is refused.</text></g>
+      <g class="step step-2"><text x="40" y="378" class="t-step">02</text><text x="76" y="378" class="t-caption">The stream holds the message until Bob's daemon takes it, even if his laptop was asleep.</text></g>
+      <g class="step step-3"><text x="40" y="378" class="t-step">03</text><text x="76" y="378" class="t-caption">A session opens on Bob's machine and a receipt goes back. Inbox mode waits for Bob; auto mode answers.</text></g>
+      <g class="step step-4"><text x="40" y="378" class="t-step">04</text><text x="76" y="378" class="t-caption">The reply travels back on <tspan class="t-code">wh.inbox.alice.bob</tspan> and lands in Alice's app as a new session.</text></g>
+      <g class="ticks">
+        <rect class="tick tick-1" x="868" y="366" width="18" height="4" rx="1"/>
+        <rect class="tick tick-2" x="892" y="366" width="18" height="4" rx="1"/>
+        <rect class="tick tick-3" x="916" y="366" width="18" height="4" rx="1"/>
+        <rect class="tick tick-4" x="940" y="366" width="18" height="4" rx="1"/>
+      </g>
     </g>
   </svg>
-  </div>
-  <figcaption id="schematic-caption">Sheet 01, figure 1: an ask leaves Alice's session on <code>wh.inbox.bob.alice</code>, waits on the bus until Bob's daemon takes it, becomes a session on Bob's machine, and the reply comes back on <code>wh.inbox.alice.bob</code>.</figcaption>
+
+  <svg class="drawing drawing-portrait" viewBox="0 0 420 860" role="img" aria-label="Animated schematic of the round trip, stacked for narrow screens: Alice's machine at the top, the bus in the middle, Bob's machine at the bottom.">
+    <defs>
+      <marker id="ahp" class="marker-lane" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
+      <marker id="ahp-soft" class="marker-leader" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
+    </defs>
+    <g class="lane">
+      <path d="M262 246 V312" marker-end="url(#ahp)"/>
+      <path d="M262 420 V516" marker-end="url(#ahp)"/>
+      <path d="M158 516 V420" marker-end="url(#ahp)"/>
+      <path d="M158 312 V246" marker-end="url(#ahp)"/>
+    </g>
+    <g class="lane-label">
+      <text transform="rotate(-90 278 279)" x="278" y="279" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
+      <text transform="rotate(-90 278 468)" x="278" y="468" text-anchor="middle" class="t-lane">ask</text>
+      <text transform="rotate(-90 142 279)" x="142" y="279" text-anchor="middle" class="t-lane">reply</text>
+      <text transform="rotate(-90 142 468)" x="142" y="468" text-anchor="middle" class="t-code t-small">wh.inbox.alice.bob</text>
+    </g>
+    <g class="receipt">
+      <path d="M236 512 V426" marker-end="url(#ahp-soft)"/>
+      <text transform="rotate(-90 224 468)" x="224" y="468" text-anchor="middle" class="t-code t-small">receipt</text>
+    </g>
+    <g class="device">
+      <rect class="screen" x="99" y="40" width="222" height="140" rx="8"/>
+      <rect class="base" x="81" y="184" width="258" height="9" rx="4.5"/>
+      <g class="card">
+        <rect x="117" y="56" width="186" height="46" rx="4"/>
+        <text x="129" y="74" class="t-card">Alice's session</text>
+        <text x="129" y="92" class="t-code t-small">wormhole ask bob "…"</text>
+      </g>
+      <g class="card card-reply-alice">
+        <rect x="117" y="110" width="186" height="46" rx="4"/>
+        <text x="129" y="128" class="t-card">Reply from ^bob</text>
+        <text x="129" y="146" class="t-code t-small">I think Y, because Z.</text>
+      </g>
+      <text x="210" y="226" text-anchor="middle" class="t-title">Alice's machine</text>
+    </g>
+    <g class="bus">
+      <path class="body" d="M150 326 V394 A60 14 0 0 0 270 394 V326"/>
+      <ellipse class="lid" cx="210" cy="326" rx="60" ry="14"/>
+      <ellipse class="pulse" cx="210" cy="326" rx="60" ry="14"/>
+      <text x="210" y="366" text-anchor="middle" class="t-title">Bus</text>
+      <text x="210" y="384" text-anchor="middle" class="t-code t-small">NATS JetStream</text>
+    </g>
+    <g class="device">
+      <rect class="screen" x="99" y="536" width="222" height="130" rx="8"/>
+      <rect class="base" x="81" y="670" width="258" height="9" rx="4.5"/>
+      <g class="card card-bob">
+        <rect x="117" y="552" width="186" height="46" rx="4"/>
+        <text x="129" y="570" class="t-card">^alice: what do you think…</text>
+        <text x="129" y="588" class="t-code t-small">copilot -p · inbox or auto</text>
+      </g>
+      <g class="card card-reply-bob">
+        <rect x="117" y="606" width="186" height="46" rx="4"/>
+        <text x="129" y="624" class="t-card">Bob's agent answers</text>
+        <text x="129" y="642" class="t-code t-small">wormhole reply 01JB… "…"</text>
+      </g>
+      <text x="210" y="712" text-anchor="middle" class="t-title">Bob's machine</text>
+    </g>
+    <g class="envelope envelope-portrait" aria-hidden="true">
+      <rect x="-12" y="-8" width="24" height="16" rx="2"/>
+      <path d="M-12 -8 L0 2 L12 -8"/>
+    </g>
+    <g class="captions">
+      <path class="rule" d="M24 748 H396"/>
+      <g class="step step-1"><text x="24" y="786" class="t-step">01</text><text x="58" y="786" class="t-caption"><tspan x="58" dy="0">Alice's agent publishes the ask; the</tspan><tspan x="58" dy="20">subject names the sender.</tspan></text></g>
+      <g class="step step-2"><text x="24" y="786" class="t-step">02</text><text x="58" y="786" class="t-caption"><tspan x="58" dy="0">The stream holds it until Bob's</tspan><tspan x="58" dy="20">daemon takes it.</tspan></text></g>
+      <g class="step step-3"><text x="24" y="786" class="t-step">03</text><text x="58" y="786" class="t-caption"><tspan x="58" dy="0">A session opens on Bob's machine</tspan><tspan x="58" dy="20">and a receipt goes back.</tspan></text></g>
+      <g class="step step-4"><text x="24" y="786" class="t-step">04</text><text x="58" y="786" class="t-caption"><tspan x="58" dy="0">The reply travels back and lands</tspan><tspan x="58" dy="20">in Alice's app as a new session.</tspan></text></g>
+      <g class="ticks">
+        <rect class="tick tick-1" x="302" y="836" width="18" height="4" rx="1"/>
+        <rect class="tick tick-2" x="326" y="836" width="18" height="4" rx="1"/>
+        <rect class="tick tick-3" x="350" y="836" width="18" height="4" rx="1"/>
+        <rect class="tick tick-4" x="374" y="836" width="18" height="4" rx="1"/>
+      </g>
+    </g>
+  </svg>
+  <figcaption id="schematic-caption">Sheet 01, figure 1: the round trip. An ask leaves Alice's session on <code>wh.inbox.bob.alice</code>, waits on the bus until Bob's daemon takes it, becomes a session on Bob's machine (with a receipt on <code>wh.ack.alice.bob</code>), and the reply comes back on <code>wh.inbox.alice.bob</code>. The figure loops; with reduced motion it shows the finished state.</figcaption>
 </figure>
