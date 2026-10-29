@@ -1,9 +1,14 @@
 name: release
-# Runs on a pushed v* tag, or on manual dispatch with a version, in which
-# case the workflow creates and pushes the tag itself before building.
+# Three ways to cut a release; all end in a v* tag and a GitHub Release:
+#   1. push a v* tag;
+#   2. dispatch this workflow with a version;
+#   3. create a branch named release/v<version> (for environments that can
+#      create branches but not tags). The workflow creates the tag from
+#      that branch head; the branch can be deleted afterwards.
 on:
   push:
     tags: ["v*"]
+    branches: ["release/v*"]
   workflow_dispatch:
     inputs:
       version:
@@ -20,12 +25,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: create tag
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
         env:
-          VERSION: ${{ inputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -eu
-          case "$VERSION" in v[0-9]*) ;; *) echo "version must look like v0.1.0"; exit 1;; esac
+          VERSION="${INPUT_VERSION:-${GITHUB_REF#refs/heads/release/}}"
+          case "$VERSION" in v[0-9]*) ;; *) echo "version must look like v0.1.0, got $VERSION"; exit 1;; esac
           if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
             echo "tag $VERSION already exists; checking it out"
             git fetch origin "refs/tags/$VERSION:refs/tags/$VERSION"
