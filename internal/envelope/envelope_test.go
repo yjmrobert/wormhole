@@ -9,7 +9,9 @@ import (
 
 var now = time.Date(2026, 10, 29, 15, 44, 52, 0, time.UTC)
 
-func alice() Peer { return Peer{User: "alice", Host: "alice-laptop", SessionID: "d29557f4-0000-4000-8000-000000000000"} }
+func alice() Peer {
+	return Peer{User: "alice", Host: "alice-laptop", SessionID: "d29557f4-0000-4000-8000-000000000000"}
+}
 
 func TestNewAskIsValid(t *testing.T) {
 	e := NewAsk(alice(), "bob", "What do you think about X?", now)

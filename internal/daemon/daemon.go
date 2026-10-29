@@ -41,6 +41,7 @@ type Daemon struct {
 	// paused reports whether the local kill switch is on.
 	paused     func() bool
 	pauseCheck time.Duration
+	onHandled  func()
 }
 
 // Options are the daemon's collaborators. Zero values get sane defaults.
@@ -55,11 +56,13 @@ type Options struct {
 	Paused func() bool
 	// PauseCheck is how often the kill switch is polled (default 2s).
 	PauseCheck time.Duration
+	// OnHandled, when set, is called after every delivery is handled.
+	OnHandled func()
 }
 
 // New wires a daemon.
 func New(o Options) *Daemon {
-	d := &Daemon{cfg: o.Config, bus: o.Bus, store: o.Store, app: o.App, log: o.Log, host: o.Host, now: o.Now, paused: o.Paused, pauseCheck: o.PauseCheck}
+	d := &Daemon{cfg: o.Config, bus: o.Bus, store: o.Store, app: o.App, log: o.Log, host: o.Host, now: o.Now, paused: o.Paused, pauseCheck: o.PauseCheck, onHandled: o.OnHandled}
 	if d.pauseCheck == 0 {
 		d.pauseCheck = 2 * time.Second
 	}
@@ -180,6 +183,9 @@ func (d *Daemon) retryUnopened(ctx context.Context) {
 // Handle processes one delivery. It always ends with exactly one Ack or
 // Nak on the delivery.
 func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
+	if d.onHandled != nil {
+		defer d.onHandled()
+	}
 	e := dl.Env
 	log := d.log.With("msg", e.ID, "type", string(e.Type), "from", dl.Sender, "attempt", dl.Attempt)
 

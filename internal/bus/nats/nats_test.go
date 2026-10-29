@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats-server/v2/server"
+	natsgo "github.com/nats-io/nats.go"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
 	"github.com/yjmrobert/wormhole/internal/envelope"
