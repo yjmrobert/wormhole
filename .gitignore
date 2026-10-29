@@ -1,24 +1,27 @@
-# build output
-/bin/
-/dist/
-*.test
-*.out
-coverage.*
 
-# private deployment material: never commit real configs or credentials
-config.yaml
-*.creds
-*.nk
-*.pem
-*.key
-*.crt
 !deploy/**/*.example
-.wormhole-forbidden-terms
-threads.db*
-
+# build output
+# captures and build state are local
 # editor noise
+# private deployment material: never commit real configs or credentials
+*.creds
+*.crt
+*.key
+*.nk
+*.out
+*.pem
+*.swp
+*.test
 .idea/
 .vscode/
-*.swp
-docs/skill.md
+.wormhole-forbidden-terms
+/.impeccable/build/
+/.impeccable/mocks/
+/.impeccable/review/
+/bin/
+/dist/
+/site/
+config.yaml
+coverage.*
 site/
+threads.db*

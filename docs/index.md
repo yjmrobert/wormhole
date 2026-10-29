@@ -1,19 +1,14 @@
 # Wormhole
 
-Wormhole lets `ask ^bob what he thinks about X` in any GitHub Copilot app
-session deliver that question into a new session on Bob's machine, and
-brings his answer back to the session that asked.
+Wormhole lets `ask ^bob what he thinks about X` in any GitHub Copilot app session deliver that question into a new session on Bob's machine, and brings his answer back to the session that asked.
+
+## How it works
 
 One Go binary (`wormhole` CLI plus `wormhole daemon`), a message bus (NATS
 JetStream first, others behind an interface) and a skill that teaches
 agents the `^handle` syntax. A wormhole joins two sessions on two machines;
 a thread is an open wormhole; `wormhole ask` opens one and `wormhole reply`
 travels back through it.
-
-```
-alice's session ──wormhole ask──▶ bus ──▶ bob's daemon ──▶ new session on bob's machine
-alice's daemon ◀── bus ◀──wormhole reply── bob's session (agent or human)
-```
 
 Wormhole is an independent open-source project under Apache-2.0. Every
 team runs its own bus from the shipped templates; nothing is hosted and the

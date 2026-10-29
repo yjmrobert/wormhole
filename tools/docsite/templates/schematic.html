@@ -1,0 +1,70 @@
+<figure class="schematic" aria-labelledby="schematic-caption">
+  <div class="schematic-scroll">
+  <svg class="drawing" viewBox="0 0 1000 400" role="img" aria-label="Schematic of the round trip: alice's session publishes an ask to the bus, bob's daemon materializes it as a session on bob's machine, and the reply travels back through the bus to alice.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    </defs>
+
+    <!-- stations -->
+    <g class="station draw d0">
+      <rect x="40" y="128" width="170" height="108" rx="5" pathLength="1"/>
+      <path d="M24 250 H226 M40 236 L28 250 M210 236 L222 250" pathLength="1"/>
+      <path class="hair" d="M58 146 h134 M58 160 h92 M58 174 h110" pathLength="1"/>
+    </g>
+    <g class="station draw d0">
+      <rect x="410" y="150" width="180" height="90" rx="45" pathLength="1"/>
+      <path class="hair" d="M444 177 h112 M444 195 h112 M444 213 h112" pathLength="1"/>
+    </g>
+    <g class="station draw d0">
+      <rect x="790" y="128" width="170" height="108" rx="5" pathLength="1"/>
+      <path d="M774 250 H976 M790 236 L778 250 M960 236 L972 250" pathLength="1"/>
+      <path class="hair" d="M808 146 h134 M808 160 h70 M808 174 h118" pathLength="1"/>
+    </g>
+
+    <!-- lanes -->
+    <g class="lane draw d1">
+      <path d="M216 170 H404" pathLength="1" marker-end="url(#arrow)"/>
+      <path d="M596 170 H784" pathLength="1" marker-end="url(#arrow)"/>
+      <path d="M784 222 H596" pathLength="1" marker-end="url(#arrow)"/>
+      <path d="M404 222 H216" pathLength="1" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- leader lines -->
+    <g class="leader draw d2">
+      <path d="M690 164 V74 H560" pathLength="1"/>
+      <circle cx="690" cy="170" r="2.2"/>
+      <path d="M500 246 V338 H454" pathLength="1"/>
+      <circle cx="500" cy="240" r="2.2"/>
+      <path d="M875 256 V338 H826" pathLength="1"/>
+      <circle cx="875" cy="250" r="2.2"/>
+    </g>
+
+    <!-- labels -->
+    <g class="label fade d2">
+      <text x="125" y="286" text-anchor="middle" class="t-title">Alice's session</text>
+      <text x="125" y="306" text-anchor="middle" class="t-code">wormhole ask bob "…"</text>
+      <text x="500" y="286" text-anchor="middle" class="t-title">Bus · NATS JetStream</text>
+      <text x="500" y="306" text-anchor="middle" class="t-code">stream WORMHOLE, subjects wh.&gt;</text>
+      <text x="875" y="286" text-anchor="middle" class="t-title">Bob's machine</text>
+      <text x="875" y="306" text-anchor="middle" class="t-code">wormholed, then copilot -p</text>
+
+      <text x="310" y="158" text-anchor="middle" class="t-lane">ask</text>
+      <text x="690" y="158" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
+      <text x="690" y="242" text-anchor="middle" class="t-lane">reply</text>
+      <text x="310" y="242" text-anchor="middle" class="t-code t-small">wh.inbox.alice.bob</text>
+
+      <text x="552" y="78" text-anchor="end" class="t-note">The subject names the sender. The server refuses a forged handle.</text>
+      <text x="446" y="342" text-anchor="end" class="t-note">Durable: a sleeping laptop's messages wait for it.</text>
+      <text x="818" y="342" text-anchor="end" class="t-note">Inbox mode: nothing runs until Bob opens it.</text>
+      <text x="818" y="360" text-anchor="end" class="t-note">Auto mode: copilot -p with read-only tools.</text>
+    </g>
+
+    <!-- the envelope on the thread -->
+    <g class="envelope" aria-hidden="true">
+      <rect x="-11" y="-7" width="22" height="14" rx="1.5"/>
+      <path d="M-11 -7 L0 2 L11 -7"/>
+    </g>
+  </svg>
+  </div>
+  <figcaption id="schematic-caption">Sheet 01, figure 1: an ask leaves Alice's session on <code>wh.inbox.bob.alice</code>, waits on the bus until Bob's daemon takes it, becomes a session on Bob's machine, and the reply comes back on <code>wh.inbox.alice.bob</code>.</figcaption>
+</figure>

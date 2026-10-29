@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sheet not found · Wormhole</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="{{.Base}}assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{{.Base}}assets/fonts.css">
+<link rel="stylesheet" href="{{.Base}}assets/style.css">
+<script>
+(function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+</head>
+<body class="notfound">
+{{.StarField}}
+<header class="masthead">
+  <a class="wordmark" href="{{.Base}}" aria-label="Wormhole home">
+    <svg class="mark" viewBox="0 0 34 20" aria-hidden="true" focusable="false"><circle cx="6" cy="10" r="4.25"/><circle cx="28" cy="10" r="4.25"/><path d="M10.2 10 C 14.5 1.5, 19.5 18.5, 23.8 10"/></svg>
+    <span>Wormhole</span>
+  </a>
+</header>
+<div class="sheet">
+  <main id="content" class="column">
+    <h1 class="title">Sheet not found</h1>
+    <div class="prose">
+      <p>There is no drawing at this address. The index lists every sheet:</p>
+      <ol class="index-list">
+      {{range .Sheets}}<li><a href="{{.URL}}">{{.Label}}</a> <span class="muted">{{.Summary}}</span></li>{{end}}
+      </ol>
+    </div>
+  </main>
+</div>
+</body>
+</html>

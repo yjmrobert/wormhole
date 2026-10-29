@@ -2,7 +2,7 @@ GO ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test e2e vet fmt lint leakcheck clean install
+.PHONY: build test e2e vet fmt lint leakcheck clean install docs
 
 build:
 	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/wormhole ./cmd/wormhole
@@ -28,5 +28,8 @@ lint: vet
 leakcheck:
 	./scripts/leakcheck.sh
 
+docs:
+	$(GO) run ./tools/docsite -root . -out site -base / -version $(VERSION)
+
 clean:
-	rm -rf bin dist
+	rm -rf bin dist site
