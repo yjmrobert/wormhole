@@ -18,6 +18,11 @@ import (
 // SessionEnv is the variable the Copilot agent's shell exposes.
 const SessionEnv = "COPILOT_AGENT_SESSION_ID"
 
+// SkillVersion is the default for --skill-version and must equal the
+// version in skills/wormhole/SKILL.md; a test keeps them in step. Bump both
+// together whenever the skill's CLI contract changes.
+const SkillVersion = "0.1.0"
+
 // sendResult is the JSON shape of ask, reply and send.
 type sendResult struct {
 	OK            bool   `json:"ok"`
@@ -128,7 +133,7 @@ func (a *App) ask(ctx context.Context, c *common, args []string) error {
 	ref := fs.String("context", "", "short pointer such as 'PR #123'")
 	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
 	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
-	skillV := fs.String("skill-version", "", "version of the skill producing this message")
+	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
 	pos, err := a.parse(fs, args)
 	if err != nil {
 		return err
@@ -233,7 +238,7 @@ func (a *App) reply(ctx context.Context, c *common, args []string) error {
 	c.bind(fs)
 	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
 	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
-	skillV := fs.String("skill-version", "", "version of the skill producing this message")
+	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
 	pos, err := a.parse(fs, args)
 	if err != nil {
 		return err
@@ -250,7 +255,7 @@ func (a *App) send(ctx context.Context, c *common, args []string) error {
 	thread := fs.String("thread", "", "open thread to send on")
 	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
 	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
-	skillV := fs.String("skill-version", "", "version of the skill producing this message")
+	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
 	pos, err := a.parse(fs, args)
 	if err != nil {
 		return err
