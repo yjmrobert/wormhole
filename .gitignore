@@ -25,3 +25,5 @@ config.yaml
 coverage.*
 site/
 threads.db*
+# reviewer inputs copied in for a session, never committed
+/.impeccable/*.md
