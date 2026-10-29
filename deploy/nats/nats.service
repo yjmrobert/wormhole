@@ -1,0 +1,29 @@
+# System unit for the Wormhole bus. Install nats-server from
+# https://github.com/nats-io/nats-server/releases, then:
+#   useradd --system --home /var/lib/nats --create-home nats
+#   install -d -o nats -g nats /var/lib/nats/jetstream /etc/nats
+#   cp nats-server.conf accounts.conf /etc/nats/   (your private copies)
+#   cp deploy/nats/nats.service /etc/systemd/system/
+#   systemctl enable --now nats
+
+[Unit]
+Description=NATS server (Wormhole bus)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nats
+Group=nats
+ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats-server.conf
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nats
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

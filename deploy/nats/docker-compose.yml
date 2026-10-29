@@ -1,0 +1,17 @@
+# Containerized alternative to nats.service. Host networking is deliberate:
+# bridge networking and corporate VPN clients often fight on a LAN.
+#   cp nats-server.conf accounts.conf ./   (your private copies)
+#   docker compose up -d
+services:
+  nats:
+    image: nats:2.11-alpine
+    network_mode: host
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ./accounts.conf:/etc/nats/accounts.conf:ro
+      - ./certs:/etc/nats/certs:ro
+      - nats-data:/var/lib/nats/jetstream
+    restart: unless-stopped
+volumes:
+  nats-data:
