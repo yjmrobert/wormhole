@@ -1,5 +1,5 @@
 <figure class="schematic" aria-labelledby="schematic-caption">
-  <svg class="drawing drawing-landscape" viewBox="0 0 1000 430" role="img" aria-label="Animated schematic of the round trip: Alice's agent publishes an ask, the bus holds it, Bob's daemon opens a session on his machine and sends a receipt, and the reply travels back to Alice's session.">
+  <svg class="drawing drawing-landscape" viewBox="0 56 1000 374" role="img" aria-label="Animated schematic of the round trip: Alice's agent publishes an ask, the bus holds it, Bob's daemon opens a session on his machine and sends a receipt, and the reply travels back to Alice's session.">
     <defs>
       <marker id="ah" class="marker-lane" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
       <marker id="ah-soft" class="marker-leader" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
@@ -29,12 +29,12 @@
       <rect class="screen" x="62" y="96" width="222" height="146" rx="8"/>
       <rect class="base" x="44" y="246" width="258" height="9" rx="4.5"/>
       <g class="card">
-        <rect x="80" y="112" width="186" height="52" rx="4"/>
+        <rect x="80" y="112" width="168" height="52" rx="4"/>
         <text x="92" y="131" class="t-card">Alice's session</text>
         <text x="92" y="151" class="t-code t-small">wormhole ask bob "…"</text>
       </g>
       <g class="card card-reply-alice">
-        <rect x="80" y="172" width="186" height="56" rx="4"/>
+        <rect x="80" y="172" width="168" height="56" rx="4"/>
         <text x="92" y="191" class="t-card">Reply from ^bob</text>
         <text x="92" y="211" class="t-code t-small">I think Y, because Z.</text>
       </g>
@@ -58,7 +58,7 @@
       <g class="card card-bob">
         <rect x="734" y="112" width="186" height="52" rx="4"/>
         <text x="746" y="131" class="t-card">^alice: what do you think…</text>
-        <text x="746" y="151" class="t-code t-small">new session · inbox or auto</text>
+        <text x="746" y="151" class="t-code t-small">copilot -p · inbox or auto</text>
       </g>
       <g class="card card-reply-bob">
         <rect x="734" y="172" width="186" height="56" rx="4"/>
@@ -96,15 +96,15 @@
       <marker id="ahp-soft" class="marker-leader" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1.5 1.5 8 5 1.5 8.5"/></marker>
     </defs>
     <g class="lane">
-      <path d="M262 236 V312" marker-end="url(#ahp)"/>
+      <path d="M262 246 V312" marker-end="url(#ahp)"/>
       <path d="M262 420 V516" marker-end="url(#ahp)"/>
       <path d="M158 516 V420" marker-end="url(#ahp)"/>
-      <path d="M158 312 V236" marker-end="url(#ahp)"/>
+      <path d="M158 312 V246" marker-end="url(#ahp)"/>
     </g>
     <g class="lane-label">
-      <text transform="rotate(-90 278 274)" x="278" y="274" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
+      <text transform="rotate(-90 278 279)" x="278" y="279" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
       <text transform="rotate(-90 278 468)" x="278" y="468" text-anchor="middle" class="t-lane">ask</text>
-      <text transform="rotate(-90 142 274)" x="142" y="274" text-anchor="middle" class="t-lane">reply</text>
+      <text transform="rotate(-90 142 279)" x="142" y="279" text-anchor="middle" class="t-lane">reply</text>
       <text transform="rotate(-90 142 468)" x="142" y="468" text-anchor="middle" class="t-code t-small">wh.inbox.alice.bob</text>
     </g>
     <g class="receipt">
@@ -112,8 +112,8 @@
       <text transform="rotate(-90 224 468)" x="224" y="468" text-anchor="middle" class="t-code t-small">receipt</text>
     </g>
     <g class="device">
-      <rect class="screen" x="99" y="40" width="222" height="130" rx="8"/>
-      <rect class="base" x="81" y="174" width="258" height="9" rx="4.5"/>
+      <rect class="screen" x="99" y="40" width="222" height="140" rx="8"/>
+      <rect class="base" x="81" y="184" width="258" height="9" rx="4.5"/>
       <g class="card">
         <rect x="117" y="56" width="186" height="46" rx="4"/>
         <text x="129" y="74" class="t-card">Alice's session</text>
@@ -124,7 +124,7 @@
         <text x="129" y="128" class="t-card">Reply from ^bob</text>
         <text x="129" y="146" class="t-code t-small">I think Y, because Z.</text>
       </g>
-      <text x="210" y="216" text-anchor="middle" class="t-title">Alice's machine</text>
+      <text x="210" y="226" text-anchor="middle" class="t-title">Alice's machine</text>
     </g>
     <g class="bus">
       <path class="body" d="M150 326 V394 A60 14 0 0 0 270 394 V326"/>
@@ -139,7 +139,7 @@
       <g class="card card-bob">
         <rect x="117" y="552" width="186" height="46" rx="4"/>
         <text x="129" y="570" class="t-card">^alice: what do you think…</text>
-        <text x="129" y="588" class="t-code t-small">new session · inbox or auto</text>
+        <text x="129" y="588" class="t-code t-small">copilot -p · inbox or auto</text>
       </g>
       <g class="card card-reply-bob">
         <rect x="117" y="606" width="186" height="46" rx="4"/>

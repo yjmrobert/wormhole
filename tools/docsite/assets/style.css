@@ -269,12 +269,14 @@ body {
 .drawing .bus .hair { fill: none; stroke: var(--blue-stroke); stroke-width: 1; opacity: 0.5; }
 .drawing .bus .pulse { fill: none; stroke: var(--red-stroke); stroke-width: 1.5; opacity: 0; transform-box: fill-box; transform-origin: center; }
 .drawing .receipt path { fill: none; stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 4; }
-.drawing .receipt { opacity: 0; }
+.drawing .receipt { opacity: 1; }
 .drawing .envelope rect { fill: var(--paper); stroke: var(--red-stroke); stroke-width: 1.8; }
 .drawing .envelope path { fill: none; stroke: var(--red-stroke); stroke-width: 1.8; stroke-linejoin: round; }
 .drawing .captions .rule { stroke: var(--line); stroke-width: 1; }
 .drawing .step { opacity: 0; }
+.drawing .step-4 { opacity: 1; }
 .drawing .tick { fill: var(--line); }
+.drawing .tick-4 { fill: var(--red-stroke); }
 .schematic figcaption { margin: 12px 0 0; font-size: 0.92rem; color: var(--ink-2); max-width: 70ch; }
 .schematic figcaption code { font-size: 0.86em; }
 
@@ -283,8 +285,8 @@ body {
    0–8 the ask is written · 8–30 it crosses to the bus and on to Bob ·
    30–58 a session opens on Bob's machine and answers · 58–84 the reply
    returns · 84–100 it lands in Alice's app. */
-.drawing .envelope { offset-path: path("M 284 160 H 716 V 218 H 284"); offset-rotate: 0deg; offset-distance: 0%; animation: travel var(--loop) linear infinite; }
-.drawing .envelope-portrait { offset-path: path("M 262 236 V 516 H 158 V 236"); }
+.drawing .envelope { offset-path: path("M 262 160 H 716 V 218 H 262"); offset-rotate: 0deg; offset-distance: 0%; opacity: 0; animation: travel var(--loop) linear infinite; }
+.drawing .envelope-portrait { offset-path: path("M 262 168 V 516 H 158 V 168"); }
 @keyframes travel {
   0%, 8% { offset-distance: 0%; opacity: 1; }
   18% { offset-distance: 25%; }
@@ -349,12 +351,8 @@ body {
 .drawing .card, .drawing .step, .drawing .receipt, .drawing .bus .pulse { transform-box: fill-box; transform-origin: center; }
 @media (prefers-reduced-motion: reduce) {
   .stars-l1, .stars-l2, .stars-l3 { animation: none; }
+  /* the base state is the finished frame: every card, the receipt, step 04 */
   .drawing .envelope, .drawing .bus .pulse, .drawing .card, .drawing .receipt, .drawing .step, .drawing .tick { animation: none; }
-  .drawing .envelope { offset-distance: 25%; opacity: 1; }
-  .drawing .card { opacity: 1; transform: none; }
-  .drawing .receipt { opacity: 1; }
-  .drawing .step-1 { opacity: 1; }
-  .drawing .tick-1 { fill: var(--red-stroke); }
 }
 
 /* ---------- prose ---------- */

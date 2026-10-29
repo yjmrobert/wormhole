@@ -46,12 +46,14 @@ left: a drawn wormhole mark plus WORMHOLE in condensed caps; search in the
 middle; release tag, GitHub link and theme switch right). Below it the
 sheet: left rail “DRAWING INDEX” listing the sheets; the column opens with
 the drawing title WORMHOLE, one-line thesis beneath it in reading type,
-then the full-column schematic: three stations left to right (alice’s
-session, the bus, bob’s machine) joined by the ask path above and the reply
-path below, leader lines to callouts (“wh.inbox.bob.alice”, “receipt”,
-“copilot -p”), the envelope on the path. The primary action, “Install”,
-sits as a drawn button under the thesis line; “Read the design” beside it
-as a link.
+then figure 1 across the column: three stations left to right (Alice’s
+machine, the bus as a cylinder, Bob’s machine) with session cards inside
+the screens, the ask lane above and the reply lane below carrying the
+subjects (“wh.inbox.bob.alice”, “wh.inbox.alice.bob”) and the words ask
+and reply, a dashed receipt return between the lanes, the red-lead
+envelope on the thread, and a four-step caption strip under a rule with
+step ticks at its right. The primary action, “Install”, sits as a drawn
+button under the thesis line; “Read the design” beside it as a link.
 
 FORM: Drawing sheet, first on the ordered list; seed: none (unavailable);
 the roll could not run in this environment and the world was pinned by the
