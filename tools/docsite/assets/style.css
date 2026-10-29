@@ -285,7 +285,7 @@ body {
    0–8 the ask is written · 8–30 it crosses to the bus and on to Bob ·
    30–58 a session opens on Bob's machine and answers · 58–84 the reply
    returns · 84–100 it lands in Alice's app. */
-.drawing .envelope { offset-path: path("M 262 160 H 716 V 218 H 262"); offset-rotate: 0deg; offset-distance: 0%; opacity: 0; animation: travel var(--loop) linear infinite; }
+.drawing .envelope { offset-path: path("M 262 160 H 716 V 218 H 262"); offset-rotate: 0deg; offset-distance: 100%; opacity: 1; animation: travel var(--loop) linear infinite; }
 .drawing .envelope-portrait { offset-path: path("M 262 168 V 516 H 158 V 168"); }
 @keyframes travel {
   0%, 8% { offset-distance: 0%; opacity: 1; }
@@ -297,7 +297,8 @@ body {
   70% { offset-distance: 75%; }
   74% { offset-distance: 75%; }
   84% { offset-distance: 100%; opacity: 1; }
-  86%, 100% { offset-distance: 100%; opacity: 0; }
+  86%, 99% { offset-distance: 100%; opacity: 0; }
+  100% { offset-distance: 100%; opacity: 1; }
 }
 .drawing .bus .pulse { animation: pulse var(--loop) ease-out infinite; }
 @keyframes pulse {
