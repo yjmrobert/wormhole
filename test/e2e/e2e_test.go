@@ -208,43 +208,56 @@ func roundTrip(t *testing.T, alice, bob *side) {
 		t.Fatalf("inbox = %v", out)
 	}
 
-	// alice opens it: the staged session starts with her normal tools.
+	// alice opens it: the reply is appended to the session that asked,
+	// with her normal tools, and that session is shown in the app.
 	code, out, stderr = alice.cli(t, "", "open", threadID)
-	if code != 0 || out["started"] != true || out["opened"] != true {
+	if code != 0 || out["started"] != true || out["resumed"] != true || out["opened"] != true || out["session_id"] != "alice-root-session" {
 		t.Fatalf("open = %d %v %s", code, out, stderr)
 	}
 	var opened ghapp.Call
 	for _, c := range alice.app.Snapshot() {
-		if c.Op == "create" {
+		if c.Op == "resume" || c.Op == "create" {
 			opened = c
 		}
 	}
-	if opened.Session.Name != "Reply from ^bob" || len(opened.Session.AvailableTools) != 0 || !strings.HasSuffix(opened.Session.Kickoff, "---\nI think Y, because Z.") {
+	if opened.Op != "resume" || opened.Session.ID != "alice-root-session" || len(opened.Session.AvailableTools) != 0 || !strings.HasSuffix(opened.Session.Kickoff, "---\nI think Y, because Z.") {
 		t.Fatalf("opened = %+v", opened)
 	}
-	if fb, _ := out["fallback"].(string); !strings.HasPrefix(fb, "copilot --resume=") {
+	if fb, _ := out["fallback"].(string); fb != "copilot --resume=alice-root-session" {
 		t.Fatalf("fallback = %v", out["fallback"])
+	}
+	if th := threadState(t, alice, threadID); th.LocalSessionID != "alice-root-session" || th.StagedKickoff != "" {
+		t.Fatalf("alice thread after open = %+v", th)
 	}
 	code, out, _ = alice.cli(t, "", "inbox")
 	if items, _ := out["inbox"].([]any); code != 0 || len(items) != 0 {
 		t.Fatalf("inbox after open = %v", out)
 	}
 
-	// Follow-up on the open thread with send; the daemon on bob's side
-	// treats it as a message.
+	// Follow-up on the open thread with send; bob's daemon appends it to
+	// the session it created for the ask, still under the safe tool set.
 	code, out, stderr = alice.cli(t, "", "send", "bob", "--thread", threadID, "Thanks, one more thing: W?", "--yes")
 	if code != 0 || out["type"] != "message" || out["hop"] != float64(3) {
 		t.Fatalf("send = %d %v %s", code, out, stderr)
 	}
-	waitFor(t, "bob follow-up session", func() bool {
-		n := 0
+	var followUp ghapp.Call
+	waitFor(t, "bob follow-up turn", func() bool {
 		for _, c := range bob.app.Snapshot() {
-			if c.Op == "create" {
-				n++
+			if c.Op == "resume" {
+				followUp = c
+				return true
 			}
 		}
-		return n == 2
+		return false
 	})
+	if followUp.Session.ID != create.Session.ID || strings.Join(followUp.Session.AvailableTools, ",") != "view,grep" || !strings.HasSuffix(followUp.Session.Kickoff, "---\nThanks, one more thing: W?") {
+		t.Fatalf("bob follow-up = %+v", followUp)
+	}
+	for _, c := range bob.app.Snapshot() {
+		if c.Op == "create" && c.Session.ID != create.Session.ID {
+			t.Fatalf("bob opened a second session for a follow-up: %+v", c)
+		}
+	}
 
 	// Thread listings agree on both sides.
 	code, out, _ = alice.cli(t, "", "threads", "--open", "--peer", "bob")

@@ -42,3 +42,6 @@ daemon:
   nak_backoff: 30s
   open_app: true
   notify: true
+  # A reply is appended to the session that asked (copilot --resume) so the
+  # asking agent can act on it; false always opens a new "Reply from" session.
+  reply_in_place: true

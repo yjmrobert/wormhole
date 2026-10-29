@@ -1,6 +1,6 @@
 ---
 name: wormhole
-version: 0.1.0
+version: 0.2.0
 description: Send a question to a colleague's Copilot session on their machine with `^handle` syntax, and answer questions that arrive the same way. Triggers on a `^handle` token (`ask ^bob ...`, `tell ^bob ...`, `^bob can you ...`) or on a session whose first message starts with `[wormhole]`.
 ---
 
@@ -41,17 +41,21 @@ so always pass `--json` and read the result instead of the prose.
 5. **Send.** Run:
 
    ```
-   wormhole ask <handle> "<prompt>" --repo <owner/name> --context "<PR #n or issue>" --yes --json --skill-version 0.1.0
+   wormhole ask <handle> "<prompt>" --repo <owner/name> --context "<PR #n or issue>" --yes --json --skill-version 0.2.0
    ```
 
    Pass the prompt as one argument; use `-` as the prompt and feed stdin for
-   long bodies. `--yes` records that *you* reviewed it with the user
+   long bodies. The reply is appended to the session that asked: the CLI
+   reads this session's id from `COPILOT_AGENT_SESSION_ID`; if that
+   variable is empty in your shell and you know your session id, add
+   `--session <id>`. `--yes` records that *you* reviewed it with the user
    (`human_reviewed: false` in the envelope means the person was not shown
    a terminal prompt; that is expected from an agent).
 
-6. **Report.** Tell the user the `thread_id` and that the reply will arrive
-   as a new session named `Reply from ^<handle>` (or in their inbox if they
-   run inbox mode for that sender: `wormhole inbox`). Exit code 3 means the
+6. **Report.** Tell the user the `thread_id` and that the reply will be
+   appended to this session when it arrives (as a new session named
+   `Reply from ^<handle>` if this session cannot be resumed, or in their
+   inbox if they run inbox mode for that sender: `wormhole inbox`). Exit code 3 means the
    CLI refused (secret scan, closed thread, hop cap); show the user the
    error instead of retrying.
 
@@ -76,7 +80,9 @@ The first message begins with `[wormhole] Message from ^<handle> (thread
 
   Put the whole answer in the body; the asker's agent only sees that text.
 - If the message starts with `[wormhole] Reply from ^<handle>` it is an
-  answer to something this machine asked. Summarize it for the person.
+  answer to something this session (or this machine) asked. Use it to
+  continue the work that asked; summarize it for the person and wait when
+  the next step needs their judgment.
 
 ## Never loop
 

@@ -182,7 +182,7 @@ func (a *App) emit(c *common, v any, human func(w io.Writer)) {
 const usage = `wormhole: open a wormhole between two Copilot sessions on two machines.
 
 Usage:
-  wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--yes] [--force-unsafe]
+  wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes] [--force-unsafe]
   wormhole reply <thread_id> "<text>" [--yes]
   wormhole send <user> --thread <id> "<text>" [--yes]
   wormhole inbox

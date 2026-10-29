@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
+	"github.com/yjmrobert/wormhole/internal/daemon"
 	"github.com/yjmrobert/wormhole/internal/envelope"
 	"github.com/yjmrobert/wormhole/internal/ghapp"
 	"github.com/yjmrobert/wormhole/internal/threads"
@@ -40,7 +41,7 @@ func (a *App) inbox(ctx context.Context, c *common, args []string) error {
 	}
 	var items []inboxItem
 	for _, t := range list {
-		if t.StagedKickoff == "" || t.LocalSessionID != "" {
+		if t.StagedKickoff == "" {
 			continue
 		}
 		kind := "ask"
@@ -72,17 +73,19 @@ type openResult struct {
 	ThreadID  string `json:"thread_id"`
 	SessionID string `json:"session_id"`
 	Started   bool   `json:"started"`
+	Resumed   bool   `json:"resumed"`
 	Opened    bool   `json:"opened"`
 	Fallback  string `json:"fallback"`
 	OpenError string `json:"open_error,omitempty"`
 }
 
-// open starts the staged session for a thread if needed, then shows it in
-// the app. It always prints the --resume fallback.
+// open runs the staged message for a thread if there is one (appending it
+// to the session that asked, or starting a new session), then shows the
+// session in the app. It always prints the --resume fallback.
 func (a *App) open(ctx context.Context, c *common, args []string) error {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
 	c.bind(fs)
-	noStart := fs.Bool("no-start", false, "do not start a staged session; just print the kickoff")
+	noStart := fs.Bool("no-start", false, "do not run a staged message; just print it")
 	pos, err := a.parse(fs, args)
 	if err != nil {
 		return err
@@ -108,10 +111,10 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 	}
 	app := a.NewGHApp(cfg)
 	res := openResult{OK: true, ThreadID: t.ID}
-	if t.LocalSessionID == "" {
-		if t.StagedKickoff == "" {
-			return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
-		}
+	if t.StagedKickoff == "" && t.LocalSessionID == "" {
+		return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
+	}
+	if t.StagedKickoff != "" {
 		if *noStart {
 			fmt.Fprintln(a.Stdout, t.StagedKickoff)
 			return nil
@@ -120,19 +123,33 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 		if workdir == "" {
 			workdir = cfg.WorkdirFor(t.Repo)
 		}
-		sessionID := ghapp.NewSessionID()
-		name := ghapp.SessionName(t.Peer, t.Title)
-		if t.Direction == threads.DirectionOut {
-			name = fmt.Sprintf("Reply from ^%s", t.Peer)
+		// A person asked for this, so it runs with their normal tool set:
+		// no --available-tools restriction here.
+		sessionID := daemon.ContinueSession(cfg, t)
+		if sessionID != "" {
+			if !c.json {
+				fmt.Fprintf(a.Stderr, "appending the message to session %s (it runs headless first; this can take a minute)\n", sessionID)
+			}
+			if err := app.Resume(ctx, ghapp.Session{ID: sessionID, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model}); err != nil {
+				fmt.Fprintf(a.Stderr, "could not resume session %s (%v); starting a new one\n", sessionID, err)
+				sessionID = ""
+			} else {
+				res.Resumed = true
+			}
 		}
-		if !c.json {
-			fmt.Fprintf(a.Stderr, "starting session %s in %s (the kickoff runs headless first; this can take a minute)\n", sessionID, workdir)
-		}
-		// A person asked for this session, so it runs with their normal
-		// tool set: no --available-tools restriction here.
-		err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model})
-		if err != nil {
-			return fail(ExitUnavailable, "start session: %v", err)
+		if sessionID == "" {
+			sessionID = ghapp.NewSessionID()
+			name := ghapp.SessionName(t.Peer, t.Title)
+			if t.Direction == threads.DirectionOut {
+				name = fmt.Sprintf("Reply from ^%s", t.Peer)
+			}
+			if !c.json {
+				fmt.Fprintf(a.Stderr, "starting session %s in %s (the kickoff runs headless first; this can take a minute)\n", sessionID, workdir)
+			}
+			err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model})
+			if err != nil {
+				return fail(ExitUnavailable, "start session: %v", err)
+			}
 		}
 		res.Started = true
 		t, err = store.Update(ctx, t.ID, func(t *threads.Thread) {
@@ -156,6 +173,9 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 		_, _ = store.Update(ctx, t.ID, func(t *threads.Thread) { t.Opened = true })
 	}
 	a.emit(c, res, func(w io.Writer) {
+		if res.Resumed {
+			fmt.Fprintf(w, "appended the message to session %s\n", res.SessionID)
+		}
 		if res.Opened {
 			fmt.Fprintf(w, "opened session %s in the app\n", res.SessionID)
 		} else {
@@ -202,7 +222,7 @@ func (a *App) threads(ctx context.Context, c *common, args []string) error {
 				dir = "<-"
 			}
 			sess := t.LocalSessionID
-			if sess == "" && t.StagedKickoff != "" {
+			if t.StagedKickoff != "" {
 				sess = "(inbox)"
 			}
 			rows[i] = []string{t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}

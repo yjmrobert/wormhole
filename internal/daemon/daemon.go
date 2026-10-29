@@ -431,10 +431,33 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 		t.Workdir = d.cfg.WorkdirFor(t.Repo)
 	}
 	kickoff := ReplyKickoff(d.cfg.Handle, e)
-	// A reply lands in a fresh session (M2 default). Resuming the asking
-	// session is the enhancement gated on M0.
-	sessionID := ghapp.NewSessionID()
-	if mode == config.ModeAuto {
+	// The message continues the session already tied to the thread, or,
+	// for a thread this machine opened, the session that asked. Either
+	// may be empty: the asking shell did not expose its session id, or
+	// reply_in_place is off.
+	target := ContinueSession(d.cfg, t)
+	resumed := false
+	if mode == config.ModeAuto && target != "" {
+		err := d.app.Resume(ctx, ghapp.Session{
+			ID:             target,
+			Kickoff:        kickoff,
+			Workdir:        t.Workdir,
+			Model:          d.cfg.Copilot.Model,
+			AvailableTools: d.cfg.Copilot.SafeTools,
+		})
+		if err != nil {
+			d.log.Warn("could not resume session; opening a new one", "session", target, "err", err)
+		} else {
+			resumed = true
+			t.LocalSessionID = target
+		}
+	}
+	switch {
+	case resumed:
+		t.Opened = false
+		t.StagedKickoff = ""
+	case mode == config.ModeAuto:
+		sessionID := ghapp.NewSessionID()
 		err := d.app.Create(ctx, ghapp.Session{
 			ID:             sessionID,
 			Name:           fmt.Sprintf("Reply from ^%s", dl.Sender),
@@ -450,10 +473,12 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 		t.LocalSessionID = sessionID
 		t.Opened = false
 		t.StagedKickoff = ""
-	} else {
+	default:
+		// Inbox mode stages the text; `wormhole open` appends it to the
+		// target session, or starts a new one, once a person has read it.
+		// The thread keeps its session id so open knows where to go, and
+		// Opened is left alone so nothing is shown before then.
 		t.StagedKickoff = kickoff
-		t.LocalSessionID = ""
-		t.Opened = false
 	}
 	t.Mode = threads.Mode(mode)
 	if e.Type == envelope.TypeReply {
@@ -472,7 +497,7 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 	if err := d.bus.Publish(ctx, bus.SubjectFor(receipt), receipt); err != nil {
 		d.log.Warn("could not publish receipt", "err", err)
 	}
-	d.log.Info("materialized follow-up", "thread", e.ThreadID, "mode", mode, "session", t.LocalSessionID)
+	d.log.Info("materialized follow-up", "thread", e.ThreadID, "mode", mode, "session", t.LocalSessionID, "resumed", resumed)
 	d.surface(ctx, t, fmt.Sprintf("^%s replied", dl.Sender), threads.Preview(e.Body, 60))
 }
 
@@ -480,7 +505,7 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 // exists, and a notification either way. Both are best effort and never
 // affect the bus.
 func (d *Daemon) surface(ctx context.Context, t threads.Thread, title, body string) {
-	if t.LocalSessionID != "" && *d.cfg.Daemon.OpenApp {
+	if t.LocalSessionID != "" && t.StagedKickoff == "" && *d.cfg.Daemon.OpenApp {
 		if err := d.app.Open(ctx, t.LocalSessionID); err != nil {
 			d.log.Warn("could not open session in app", "session", t.LocalSessionID, "err", err)
 		} else {
@@ -496,6 +521,23 @@ func (d *Daemon) surface(ctx context.Context, t threads.Thread, title, body stri
 			d.log.Debug("notification failed", "err", err)
 		}
 	}
+}
+
+// ContinueSession returns the session a follow-up on t should be appended
+// to: the session already tied to the thread, else the session that asked
+// when this machine opened the thread. Empty when there is none or
+// reply_in_place is off.
+func ContinueSession(cfg *config.Config, t threads.Thread) string {
+	if cfg.Daemon.ReplyInPlace != nil && !*cfg.Daemon.ReplyInPlace {
+		return ""
+	}
+	if t.LocalSessionID != "" {
+		return t.LocalSessionID
+	}
+	if t.Direction == threads.DirectionOut {
+		return t.RootSessionID
+	}
+	return ""
 }
 
 // ErrPaused is returned by Pause/Resume helpers when the state file cannot

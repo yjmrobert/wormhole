@@ -21,7 +21,7 @@ const SessionEnv = "COPILOT_AGENT_SESSION_ID"
 // SkillVersion is the default for --skill-version and must equal the
 // version in skills/wormhole/SKILL.md; a test keeps them in step. Bump both
 // together whenever the skill's CLI contract changes.
-const SkillVersion = "0.1.0"
+const SkillVersion = "0.2.0"
 
 // sendResult is the JSON shape of ask, reply and send.
 type sendResult struct {
@@ -134,6 +134,7 @@ func (a *App) ask(ctx context.Context, c *common, args []string) error {
 	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
 	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
 	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
+	session := fs.String("session", "", "id of the Copilot session asking (default: $"+SessionEnv+"); the reply is appended to it")
 	pos, err := a.parse(fs, args)
 	if err != nil {
 		return err
@@ -159,7 +160,11 @@ func (a *App) ask(ctx context.Context, c *common, args []string) error {
 	if err := a.guardBody(body, *force); err != nil {
 		return err
 	}
-	e := envelope.NewAsk(a.me(cfg), to, body, a.Now())
+	from := a.me(cfg)
+	if *session != "" {
+		from.SessionID = *session
+	}
+	e := envelope.NewAsk(from, to, body, a.Now())
 	e.Context = envelope.Context{Repo: *repo, Ref: *ref}
 	e.SkillV = *skillV
 	reviewed, err := a.review(c, e, *yes)

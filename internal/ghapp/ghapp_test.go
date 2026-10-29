@@ -81,11 +81,19 @@ func TestExecArguments(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("args:\n%s\nwant:\n%s", got, want)
 	}
-	if err := e.Resume(context.Background(), "sid", "follow up", dir); err != nil {
+	if err := e.Resume(context.Background(), Session{ID: "sid", Kickoff: "follow up", Workdir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = os.ReadFile(out)
 	if string(got) != "-p\nfollow up\n--resume=sid\n" {
 		t.Fatalf("resume args: %q", got)
+	}
+	// A resume in auto mode carries the same restrictions as a create.
+	if err := e.Resume(context.Background(), Session{ID: "sid", Kickoff: "follow up", Workdir: dir, Model: "m", AvailableTools: []string{"view", "grep"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(out)
+	if string(got) != "-p\nfollow up\n--resume=sid\n--model\nm\n--available-tools\nview,grep\n" {
+		t.Fatalf("restricted resume args: %q", got)
 	}
 }
