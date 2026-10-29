@@ -1,11 +1,9 @@
 <figure class="schematic" aria-labelledby="schematic-caption">
-  <div class="schematic-scroll">
-  <svg class="drawing" viewBox="0 0 1000 400" role="img" aria-label="Schematic of the round trip: alice's session publishes an ask to the bus, bob's daemon materializes it as a session on bob's machine, and the reply travels back through the bus to alice.">
+  <svg class="drawing drawing-landscape" viewBox="0 0 1000 400" role="img" aria-label="Schematic of the round trip: alice's session publishes an ask to the bus, bob's daemon materializes it as a session on bob's machine, and the reply travels back through the bus to alice.">
     <defs>
-      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      <marker id="arrow-lane" class="marker-lane" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1 9 5 1 9"/></marker>
+      <marker id="arrow-leader" class="marker-leader" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 9 5 1 9"/></marker>
     </defs>
-
-    <!-- stations -->
     <g class="station draw d0">
       <rect x="40" y="128" width="170" height="108" rx="5" pathLength="1"/>
       <path d="M24 250 H226 M40 236 L28 250 M210 236 L222 250" pathLength="1"/>
@@ -20,17 +18,14 @@
       <path d="M774 250 H976 M790 236 L778 250 M960 236 L972 250" pathLength="1"/>
       <path class="hair" d="M808 146 h134 M808 160 h70 M808 174 h118" pathLength="1"/>
     </g>
-
-    <!-- lanes -->
     <g class="lane draw d1">
-      <path d="M216 170 H404" pathLength="1" marker-end="url(#arrow)"/>
-      <path d="M596 170 H784" pathLength="1" marker-end="url(#arrow)"/>
-      <path d="M784 222 H596" pathLength="1" marker-end="url(#arrow)"/>
-      <path d="M404 222 H216" pathLength="1" marker-end="url(#arrow)"/>
+      <path d="M216 170 H404" pathLength="1" marker-end="url(#arrow-lane)"/>
+      <path d="M596 170 H784" pathLength="1" marker-end="url(#arrow-lane)"/>
+      <path d="M784 222 H596" pathLength="1" marker-end="url(#arrow-lane)"/>
+      <path d="M404 222 H216" pathLength="1" marker-end="url(#arrow-lane)"/>
     </g>
-
-    <!-- leader lines -->
     <g class="leader draw d2">
+      <path class="dash" d="M780 196 H602" pathLength="1" marker-end="url(#arrow-leader)"/>
       <path d="M690 164 V74 H560" pathLength="1"/>
       <circle cx="690" cy="170" r="2.2"/>
       <path d="M500 246 V338 H454" pathLength="1"/>
@@ -38,8 +33,6 @@
       <path d="M875 256 V338 H826" pathLength="1"/>
       <circle cx="875" cy="250" r="2.2"/>
     </g>
-
-    <!-- labels -->
     <g class="label fade d2">
       <text x="125" y="286" text-anchor="middle" class="t-title">Alice's session</text>
       <text x="125" y="306" text-anchor="middle" class="t-code">wormhole ask bob "…"</text>
@@ -47,24 +40,73 @@
       <text x="500" y="306" text-anchor="middle" class="t-code">stream WORMHOLE, subjects wh.&gt;</text>
       <text x="875" y="286" text-anchor="middle" class="t-title">Bob's machine</text>
       <text x="875" y="306" text-anchor="middle" class="t-code">wormholed, then copilot -p</text>
-
       <text x="310" y="158" text-anchor="middle" class="t-lane">ask</text>
       <text x="690" y="158" text-anchor="middle" class="t-code t-small">wh.inbox.bob.alice</text>
+      <text x="690" y="210" text-anchor="middle" class="t-code t-small">receipt · wh.ack.alice.bob</text>
       <text x="690" y="242" text-anchor="middle" class="t-lane">reply</text>
       <text x="310" y="242" text-anchor="middle" class="t-code t-small">wh.inbox.alice.bob</text>
-
       <text x="552" y="78" text-anchor="end" class="t-note">The subject names the sender. The server refuses a forged handle.</text>
       <text x="446" y="342" text-anchor="end" class="t-note">Durable: a sleeping laptop's messages wait for it.</text>
       <text x="818" y="342" text-anchor="end" class="t-note">Inbox mode: nothing runs until Bob opens it.</text>
       <text x="818" y="360" text-anchor="end" class="t-note">Auto mode: copilot -p with read-only tools.</text>
     </g>
-
-    <!-- the envelope on the thread -->
     <g class="envelope" aria-hidden="true">
       <rect x="-11" y="-7" width="22" height="14" rx="1.5"/>
       <path d="M-11 -7 L0 2 L11 -7"/>
     </g>
   </svg>
-  </div>
-  <figcaption id="schematic-caption">Sheet 01, figure 1: an ask leaves Alice's session on <code>wh.inbox.bob.alice</code>, waits on the bus until Bob's daemon takes it, becomes a session on Bob's machine, and the reply comes back on <code>wh.inbox.alice.bob</code>.</figcaption>
+
+  <svg class="drawing drawing-portrait" viewBox="-14 0 448 812" role="img" aria-label="Schematic of the round trip, stacked: alice's session at the top, the bus in the middle, bob's machine at the bottom; the ask travels down the right lane and the reply returns up the left lane.">
+    <defs>
+      <marker id="arrow-lane-p" class="marker-lane" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1 9 5 1 9"/></marker>
+      <marker id="arrow-leader-p" class="marker-leader" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 9 5 1 9"/></marker>
+    </defs>
+    <g class="station draw d0">
+      <rect x="125" y="36" width="170" height="108" rx="5" pathLength="1"/>
+      <path d="M109 158 H311 M125 144 L113 158 M295 144 L307 158" pathLength="1"/>
+      <path class="hair" d="M143 54 h134 M143 68 h92 M143 82 h110" pathLength="1"/>
+    </g>
+    <g class="station draw d0">
+      <rect x="120" y="330" width="180" height="90" rx="45" pathLength="1"/>
+      <path class="hair" d="M154 357 h112 M154 375 h112 M154 393 h112" pathLength="1"/>
+    </g>
+    <g class="station draw d0">
+      <rect x="125" y="536" width="170" height="108" rx="5" pathLength="1"/>
+      <path d="M109 658 H311 M125 644 L113 658 M295 644 L307 658" pathLength="1"/>
+      <path class="hair" d="M143 554 h134 M143 568 h70 M143 582 h118" pathLength="1"/>
+    </g>
+    <g class="lane draw d1">
+      <path d="M262 224 V324" pathLength="1" marker-end="url(#arrow-lane-p)"/>
+      <path d="M262 426 V530" pathLength="1" marker-end="url(#arrow-lane-p)"/>
+      <path d="M158 530 V426" pathLength="1" marker-end="url(#arrow-lane-p)"/>
+      <path d="M158 324 V224" pathLength="1" marker-end="url(#arrow-lane-p)"/>
+    </g>
+    <g class="leader draw d2">
+      <path class="dash" d="M210 530 V428" pathLength="1" marker-end="url(#arrow-leader-p)"/>
+      <path d="M210 664 V700" pathLength="1"/>
+      <circle cx="210" cy="658" r="2.2"/>
+    </g>
+    <g class="label fade d2">
+      <text x="210" y="190" text-anchor="middle" class="t-title">Alice's session</text>
+      <text x="210" y="207" text-anchor="middle" class="t-code">wormhole ask bob "…"</text>
+      <text x="274" y="262" class="t-lane">ask</text>
+      <text x="274" y="279" class="t-code t-small">wh.inbox.bob.alice</text>
+      <text x="146" y="262" text-anchor="end" class="t-lane">reply</text>
+      <text x="146" y="279" text-anchor="end" class="t-code t-small">wh.inbox.alice.bob</text>
+      <text x="210" y="447" text-anchor="middle" class="t-title">Bus · NATS JetStream</text>
+      <text x="210" y="464" text-anchor="middle" class="t-code">stream WORMHOLE, wh.&gt;</text>
+      <text transform="rotate(-90 200 479)" x="200" y="479" text-anchor="middle" class="t-code t-small">receipt</text>
+      <text x="210" y="690" text-anchor="middle" class="t-title">Bob's machine</text>
+      <text x="210" y="707" text-anchor="middle" class="t-code">wormholed, then copilot -p</text>
+      <text x="210" y="738" text-anchor="middle" class="t-note">Inbox mode: nothing runs until Bob opens it.</text>
+      <text x="210" y="756" text-anchor="middle" class="t-note">Auto mode: copilot -p with read-only tools.</text>
+      <text x="210" y="774" text-anchor="middle" class="t-note">The subject names the sender; a forged handle is refused.</text>
+      <text x="210" y="792" text-anchor="middle" class="t-note">The bus is durable: a sleeping laptop's messages wait.</text>
+    </g>
+    <g class="envelope envelope-portrait" aria-hidden="true">
+      <rect x="-11" y="-7" width="22" height="14" rx="1.5"/>
+      <path d="M-11 -7 L0 2 L11 -7"/>
+    </g>
+  </svg>
+  <figcaption id="schematic-caption">Sheet 01, figure 1: an ask leaves Alice's session on <code>wh.inbox.bob.alice</code>, waits on the bus until Bob's daemon takes it, becomes a session on Bob's machine, and the reply comes back on <code>wh.inbox.alice.bob</code>; the daemon's receipt travels on <code>wh.ack.alice.bob</code>.</figcaption>
 </figure>

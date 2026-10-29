@@ -71,6 +71,12 @@ Cross-surface reach: the sheet frame, title block, index rail, drawing
 titles and code styling repeat on every page; the schematic is unique to
 sheet 01, smaller drawings may open other sheets later.
 
+Recorded adaptations: link and label text uses darker blue (45%) and red
+(45%) than the contract's stroke values so body-size text meets WCAG AA on
+paper; the drawn strokes (stations, lanes, envelope) keep the contract's
+52% blue and 62% red via --blue-stroke and --red-stroke. The sheet sits on
+a darker desk so the paper reads as a sheet.
+
 Honest risk: the heaviest of the three directions; scroll-driven motion
 needs the fallback; the title block must not become a kicker.
 

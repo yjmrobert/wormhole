@@ -63,7 +63,7 @@ func TestBuildSite(t *testing.T) {
 		t.Fatalf("search index entry: %+v", idx[0])
 	}
 	home, _ := os.ReadFile(filepath.Join(out, "index.html"))
-	if !strings.Contains(string(home), `class="drawing"`) || !strings.Contains(string(home), `class="lede"`) {
+	if !strings.Contains(string(home), `class="drawing drawing-landscape"`) || !strings.Contains(string(home), `class="lede"`) {
 		t.Error("home sheet lacks the schematic or the lede")
 	}
 	skill, _ := os.ReadFile(filepath.Join(out, "skill", "index.html"))
