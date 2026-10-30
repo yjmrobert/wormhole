@@ -45,19 +45,20 @@ so always pass `--json` and read the result instead of the prose.
    ```
 
    Pass the prompt as one argument; use `-` as the prompt and feed stdin for
-   long bodies. The reply is appended to the session that asked: the CLI
-   reads this session's id from `COPILOT_AGENT_SESSION_ID`; if that
-   variable is empty in your shell and you know your session id, add
-   `--session <id>`. `--yes` records that *you* reviewed it with the user
+   long bodies. The CLI records this session's id from
+   `COPILOT_AGENT_SESSION_ID` so a daemon configured with
+   `reply_in_place` can append the reply here; if that variable is empty
+   in your shell and you know your session id, add `--session <id>`.
+   `--yes` records that *you* reviewed it with the user
    (`human_reviewed: false` in the envelope means the person was not shown
    a terminal prompt; that is expected from an agent).
 
-6. **Report.** Tell the user the `thread_id` and that the reply will be
-   appended to this session when it arrives (as a new session named
-   `Reply from ^<handle>` if this session cannot be resumed, or in their
-   inbox if they run inbox mode for that sender: `wormhole inbox`). Exit code 3 means the
-   CLI refused (secret scan, closed thread, hop cap); show the user the
-   error instead of retrying.
+6. **Report.** Tell the user the `thread_id` and that the reply will
+   arrive as a new session named `Reply from ^<handle>` (appended to this
+   session instead if their daemon runs `reply_in_place`, or in their
+   inbox if they run inbox mode for that sender: `wormhole inbox`). Exit
+   code 3 means the CLI refused (secret scan, closed thread, hop cap);
+   show the user the error instead of retrying.
 
 ## When this session was started by Wormhole
 

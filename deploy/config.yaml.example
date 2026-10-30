@@ -29,9 +29,15 @@ copilot:
   binary: copilot
   # model: ""            # empty = the app default (admin policy may override)
   workdir: ~/wormhole
-  # The --available-tools set for auto mode. Leave empty until M0 has
-  # established which tool names are read-only on your app version.
+  # The --available-tools set for auto mode; empty refuses auto mode.
+  # Answering needs the shell tool (the agent runs wormhole reply), so a
+  # usable set is not read-only on its own: pin the shell down with the
+  # Copilot CLI's permission flags in extra_args. Tested on Copilot CLI
+  # 1.0.105: safe_tools [view, grep, glob, bash] plus allow/deny flags that
+  # permit only wormhole reply; see docs/design.md, M0 results.
   safe_tools: []
+  # Appended verbatim to every copilot run the daemon makes.
+  extra_args: []
 
 # Map a repo named in an ask's context to a local checkout.
 repos:
@@ -42,6 +48,8 @@ daemon:
   nak_backoff: 30s
   open_app: true
   notify: true
-  # A reply is appended to the session that asked (copilot --resume) so the
-  # asking agent can act on it; false always opens a new "Reply from" session.
-  reply_in_place: true
+  # true appends a reply to the session that asked (copilot --resume).
+  # Off by default: M0 showed the turn lands in the transcript but not in
+  # the context of an agent the app is running in that session, and the
+  # resume writes even while the app holds the session.
+  reply_in_place: false

@@ -38,6 +38,10 @@ type Session struct {
 	Model string
 	// AvailableTools, when non-empty, restricts the run to --available-tools.
 	AvailableTools []string
+	// ExtraArgs are appended verbatim to every copilot invocation: the
+	// deployment's permission flags (which commands the agent may run) and
+	// anything else the app version needs. They are never shell-expanded.
+	ExtraArgs []string
 }
 
 // App is what the daemon needs from the Copilot app.
@@ -133,7 +137,7 @@ func (e *Exec) run(ctx context.Context, dir string, name string, args ...string)
 }
 
 // Create runs: copilot -p <kickoff> --session-id <id> -n <name> [--model m]
-// [--available-tools a,b].
+// [--available-tools a,b] [extra args].
 func (e *Exec) Create(ctx context.Context, s Session) error {
 	if err := os.MkdirAll(s.Workdir, 0o755); err != nil {
 		return fmt.Errorf("workdir: %w", err)
@@ -145,11 +149,12 @@ func (e *Exec) Create(ctx context.Context, s Session) error {
 	if len(s.AvailableTools) > 0 {
 		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
 	}
+	args = append(args, s.ExtraArgs...)
 	return e.run(ctx, s.Workdir, e.Binary, args...)
 }
 
 // Resume runs: copilot -p <prompt> --resume=<id> [--model m]
-// [--available-tools a,b]. It fails when the session does not exist on
+// [--available-tools a,b] [extra args]. It fails when the session does not exist on
 // this machine or the app holds it locked; callers fall back to Create.
 func (e *Exec) Resume(ctx context.Context, s Session) error {
 	if s.Workdir != "" {
@@ -164,6 +169,7 @@ func (e *Exec) Resume(ctx context.Context, s Session) error {
 	if len(s.AvailableTools) > 0 {
 		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
 	}
+	args = append(args, s.ExtraArgs...)
 	return e.run(ctx, s.Workdir, e.Binary, args...)
 }
 

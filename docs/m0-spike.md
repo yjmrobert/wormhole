@@ -1,5 +1,10 @@
 # M0 spike: answer the unknowns on real machines
 
+> Run once, on October 29, 2026, with v0.2.0. The answers and the defects
+> it turned up are in [design.md](design.md), "M0 results". The steps below
+> stay as the procedure for re-running it on another desktop or Copilot
+> version.
+
 Everything in this repository that touches the Copilot app is wired from
 the plan's verified building blocks but has not been exercised here: this
 code was written without the app, a display or a LAN. M0 is a one-or-two

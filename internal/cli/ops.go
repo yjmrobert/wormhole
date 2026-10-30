@@ -197,7 +197,7 @@ func (a *App) doctor(ctx context.Context, c *common, args []string) error {
 	if *deepLink {
 		app := a.NewGHApp(cfg)
 		id := ghapp.NewSessionID()
-		err := app.Create(ctx, ghapp.Session{ID: id, Name: "wormhole doctor", Kickoff: "Reply with the single word: ok", Workdir: cfg.WorkdirFor("")})
+		err := app.Create(ctx, ghapp.Session{ID: id, Name: "wormhole doctor", Kickoff: "Reply with the single word: ok", Workdir: cfg.WorkdirFor(""), ExtraArgs: cfg.Copilot.ExtraArgs})
 		if err != nil {
 			add("deep-link: create session", false, err.Error(), "")
 		} else {
@@ -355,7 +355,9 @@ func (a *App) admin(ctx context.Context, c *common, args []string) error {
 		if err != nil {
 			return err
 		}
-		pw = string(raw)
+		// Like the daemon's password_file: the trailing newline every
+		// editor and `echo` leave is not part of the password.
+		pw = strings.TrimSpace(string(raw))
 	} else {
 		var err error
 		if pw, err = a.readSecret(fmt.Sprintf("password for %s: ", *user)); err != nil {

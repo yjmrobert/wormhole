@@ -349,17 +349,33 @@ func (d *Daemon) handleAsk(ctx context.Context, dl bus.Delivery) {
 		ExpiresAt:     e.ExpiresAt,
 		CreatedAt:     e.CreatedAt,
 	}
+	known := false
 	if existing, err := d.store.Get(ctx, e.ThreadID); err == nil {
 		// Thread id reuse: only the original peer may add to it.
 		if existing.Peer != dl.Sender || existing.Direction != threads.DirectionIn {
 			d.reject(ctx, dl, "thread id already in use")
 			return
 		}
+		known = true
 		t.LocalSessionID = existing.LocalSessionID
 	}
 	if mode == config.ModeAuto {
 		t.State = threads.StateDelivered
 		t.LocalSessionID = ghapp.NewSessionID()
+	} else {
+		// Inbox mode stages the kickoff locally; `wormhole open` starts the
+		// session once a person has read the message.
+		t.StagedKickoff = kickoff
+	}
+	// The thread row and the message copy exist before the kickoff runs:
+	// the agent inside the session answers with `wormhole reply`, which
+	// needs both on this machine. M0 saw that reply fail with "thread is
+	// not on this machine" when they were written after the run.
+	if err := d.record(ctx, e, t); err != nil {
+		d.retryOrDeadLetter(ctx, dl, err)
+		return
+	}
+	if mode == config.ModeAuto {
 		err := d.app.Create(ctx, ghapp.Session{
 			ID:             t.LocalSessionID,
 			Name:           ghapp.SessionName(dl.Sender, e.Body),
@@ -367,23 +383,17 @@ func (d *Daemon) handleAsk(ctx context.Context, dl bus.Delivery) {
 			Workdir:        t.Workdir,
 			Model:          d.cfg.Copilot.Model,
 			AvailableTools: d.cfg.Copilot.SafeTools,
+			ExtraArgs:      d.cfg.Copilot.ExtraArgs,
 		})
 		if err != nil {
-			d.retryOrDeadLetter(ctx, dl, err)
-			return
+			if !d.answeredSince(ctx, e) {
+				// Undo the record so the retry is not taken for a duplicate.
+				d.unrecord(ctx, e, !known)
+				d.retryOrDeadLetter(ctx, dl, err)
+				return
+			}
+			d.log.Warn("kickoff exited with an error after the agent had replied; keeping the thread", "msg", e.ID, "err", err)
 		}
-	} else {
-		// Inbox mode stages the kickoff locally; `wormhole open` starts the
-		// session once a person has read the message.
-		t.StagedKickoff = kickoff
-	}
-	if err := d.store.Put(ctx, t); err != nil {
-		d.retryOrDeadLetter(ctx, dl, err)
-		return
-	}
-	if err := d.store.AddMessage(ctx, e, threads.DirectionIn); err != nil {
-		d.retryOrDeadLetter(ctx, dl, err)
-		return
 	}
 	d.ack(ctx, dl)
 	receipt := envelope.NewAck(e, d.Me(), "delivered", d.now())
@@ -436,61 +446,73 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 	// may be empty: the asking shell did not expose its session id, or
 	// reply_in_place is off.
 	target := ContinueSession(d.cfg, t)
-	resumed := false
-	if mode == config.ModeAuto && target != "" {
-		err := d.app.Resume(ctx, ghapp.Session{
-			ID:             target,
-			Kickoff:        kickoff,
-			Workdir:        t.Workdir,
-			Model:          d.cfg.Copilot.Model,
-			AvailableTools: d.cfg.Copilot.SafeTools,
-		})
-		if err != nil {
-			d.log.Warn("could not resume session; opening a new one", "session", target, "err", err)
-		} else {
-			resumed = true
-			t.LocalSessionID = target
-		}
+	t.Mode = threads.Mode(mode)
+	if e.Type == envelope.TypeReply {
+		t.State = threads.StateReplied
 	}
-	switch {
-	case resumed:
-		t.Opened = false
-		t.StagedKickoff = ""
-	case mode == config.ModeAuto:
-		sessionID := ghapp.NewSessionID()
-		err := d.app.Create(ctx, ghapp.Session{
-			ID:             sessionID,
-			Name:           fmt.Sprintf("Reply from ^%s", dl.Sender),
-			Kickoff:        kickoff,
-			Workdir:        t.Workdir,
-			Model:          d.cfg.Copilot.Model,
-			AvailableTools: d.cfg.Copilot.SafeTools,
-		})
-		if err != nil {
-			d.retryOrDeadLetter(ctx, dl, err)
-			return
-		}
-		t.LocalSessionID = sessionID
-		t.Opened = false
-		t.StagedKickoff = ""
-	default:
+	if mode == config.ModeInbox {
 		// Inbox mode stages the text; `wormhole open` appends it to the
 		// target session, or starts a new one, once a person has read it.
 		// The thread keeps its session id so open knows where to go, and
 		// Opened is left alone so nothing is shown before then.
 		t.StagedKickoff = kickoff
 	}
-	t.Mode = threads.Mode(mode)
-	if e.Type == envelope.TypeReply {
-		t.State = threads.StateReplied
-	}
-	if err := d.store.Put(ctx, t); err != nil {
+	// Recorded before the run for the same reason as in handleAsk: a
+	// `wormhole send` from inside the session needs the thread and this
+	// message on disk.
+	if err := d.record(ctx, e, t); err != nil {
 		d.retryOrDeadLetter(ctx, dl, err)
 		return
 	}
-	if err := d.store.AddMessage(ctx, e, threads.DirectionIn); err != nil {
-		d.retryOrDeadLetter(ctx, dl, err)
-		return
+	resumed := false
+	if mode == config.ModeAuto {
+		if target != "" {
+			err := d.app.Resume(ctx, ghapp.Session{
+				ID:             target,
+				Kickoff:        kickoff,
+				Workdir:        t.Workdir,
+				Model:          d.cfg.Copilot.Model,
+				AvailableTools: d.cfg.Copilot.SafeTools,
+				ExtraArgs:      d.cfg.Copilot.ExtraArgs,
+			})
+			if err != nil {
+				d.log.Warn("could not resume session; opening a new one", "session", target, "err", err)
+			} else {
+				resumed = true
+				t.LocalSessionID = target
+			}
+		}
+		if !resumed {
+			sessionID := ghapp.NewSessionID()
+			err := d.app.Create(ctx, ghapp.Session{
+				ID:             sessionID,
+				Name:           fmt.Sprintf("Reply from ^%s", dl.Sender),
+				Kickoff:        kickoff,
+				Workdir:        t.Workdir,
+				Model:          d.cfg.Copilot.Model,
+				AvailableTools: d.cfg.Copilot.SafeTools,
+				ExtraArgs:      d.cfg.Copilot.ExtraArgs,
+			})
+			if err != nil {
+				if !d.answeredSince(ctx, e) {
+					d.unrecord(ctx, e, !known)
+					d.retryOrDeadLetter(ctx, dl, err)
+					return
+				}
+				d.log.Warn("kickoff exited with an error after the agent had answered; keeping the thread", "msg", e.ID, "err", err)
+			}
+			t.LocalSessionID = sessionID
+		}
+		// Only the session fields are touched here so that a reply the
+		// agent sent during the run keeps the state it set.
+		sessionID := t.LocalSessionID
+		if u, err := d.store.Update(ctx, t.ID, func(u *threads.Thread) {
+			u.LocalSessionID = sessionID
+			u.Opened = false
+			u.StagedKickoff = ""
+		}); err == nil {
+			t = u
+		}
 	}
 	d.ack(ctx, dl)
 	receipt := envelope.NewAck(e, d.Me(), "delivered", d.now())
@@ -499,6 +521,36 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 	}
 	d.log.Info("materialized follow-up", "thread", e.ThreadID, "mode", mode, "session", t.LocalSessionID, "resumed", resumed)
 	d.surface(ctx, t, fmt.Sprintf("^%s replied", dl.Sender), threads.Preview(e.Body, 60))
+}
+
+// record writes the thread row and the inbound message copy.
+func (d *Daemon) record(ctx context.Context, e envelope.Envelope, t threads.Thread) error {
+	if err := d.store.Put(ctx, t); err != nil {
+		return err
+	}
+	return d.store.AddMessage(ctx, e, threads.DirectionIn)
+}
+
+// unrecord removes what record wrote so that a redelivery is handled
+// afresh instead of being acked as a duplicate. The thread row goes too
+// when this delivery created it.
+func (d *Daemon) unrecord(ctx context.Context, e envelope.Envelope, dropThread bool) {
+	if err := d.store.DeleteMessage(ctx, e.ID); err != nil {
+		d.log.Warn("could not roll back message copy", "msg", e.ID, "err", err)
+	}
+	if dropThread {
+		if err := d.store.DeleteThread(ctx, e.ThreadID); err != nil {
+			d.log.Warn("could not roll back thread row", "thread", e.ThreadID, "err", err)
+		}
+	}
+}
+
+// answeredSince reports whether something outbound was sent on e's thread
+// after e arrived: the agent answered even though the kickoff process
+// ended badly (a timeout, a non-zero exit after the reply).
+func (d *Daemon) answeredSince(ctx context.Context, e envelope.Envelope) bool {
+	last, err := d.store.LastMessage(ctx, e.ThreadID)
+	return err == nil && last.ID != e.ID && last.Direction == threads.DirectionOut
 }
 
 // surface shows the result to the person: the deep link when a session
@@ -524,15 +576,17 @@ func (d *Daemon) surface(ctx context.Context, t threads.Thread, title, body stri
 }
 
 // ContinueSession returns the session a follow-up on t should be appended
-// to: the session already tied to the thread, else the session that asked
-// when this machine opened the thread. Empty when there is none or
-// reply_in_place is off.
+// to: the session already tied to the thread (one this daemon or `wormhole
+// open` started for it), else, when reply_in_place is on, the session that
+// asked on this machine. Empty when there is none: the asking shell did not
+// expose its session id, or reply_in_place is off and no thread session
+// exists yet.
 func ContinueSession(cfg *config.Config, t threads.Thread) string {
-	if cfg.Daemon.ReplyInPlace != nil && !*cfg.Daemon.ReplyInPlace {
-		return ""
-	}
 	if t.LocalSessionID != "" {
 		return t.LocalSessionID
+	}
+	if cfg.Daemon.ReplyInPlace != nil && !*cfg.Daemon.ReplyInPlace {
+		return ""
 	}
 	if t.Direction == threads.DirectionOut {
 		return t.RootSessionID

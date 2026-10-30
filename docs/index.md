@@ -17,9 +17,11 @@ binary never phones home.
 ## Status
 
 Pre-1.0. The round trip works end to end against a real NATS server in the
-test suite. The pieces that touch the Copilot app (`copilot -p`, the deep
-link, `--available-tools`) are wired but still need the [M0 spike](m0-spike.md)
-to be run on real machines. Linux only for now.
+test suite and was run once on two real machines in October 2026: an ask
+became a session in the other machine's app and the reply came back in
+about four seconds. A reply does not yet reach the agent already running
+in the session that asked, so replies open a separate session by default;
+[M0 results](design.md#m0-results) has the details. Linux only for now.
 
 ## Where to go
 
@@ -36,7 +38,7 @@ to be run on real machines. Linux only for now.
 
 Inbound asks from a sender run nothing until a person opens them unless
 that sender was explicitly opted into auto mode, and auto mode runs with a
-configured read-only tool set. The sender of every message is bound by the
+configured tool set whose shell is pinned to `wormhole reply`. The sender of every message is bound by the
 bus subject and enforced by the server's per-user permissions, not by the
 message. Bodies are secret-scanned on the way out, capped at 32 KB, never
 logged, and handed to the Copilot CLI as a single argument. Per-sender and

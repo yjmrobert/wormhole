@@ -37,6 +37,28 @@ func TestExampleParses(t *testing.T) {
 	if !*cfg.Daemon.OpenApp || !*cfg.Daemon.Notify {
 		t.Fatal("daemon defaults")
 	}
+	// M0: an appended turn does not reach the agent the app runs in the
+	// asking session, so in-place replies are opt-in.
+	if *cfg.Daemon.ReplyInPlace {
+		t.Fatal("reply_in_place must default to false")
+	}
+	if len(cfg.Copilot.ExtraArgs) != 0 {
+		t.Fatalf("extra_args default = %v", cfg.Copilot.ExtraArgs)
+	}
+}
+
+func TestCopilotExtraArgs(t *testing.T) {
+	cfg, err := Parse([]byte(`
+handle: alice
+bus: {kind: memory}
+copilot: {safe_tools: [view, grep, glob, bash], extra_args: ["--allow-tool", "shell(wormhole:*)", "--deny-tool", "shell(wormhole ask:*)"]}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cfg.Copilot.ExtraArgs, " "); got != "--allow-tool shell(wormhole:*) --deny-tool shell(wormhole ask:*)" {
+		t.Fatalf("extra_args = %q", got)
+	}
 }
 
 func TestSenderForms(t *testing.T) {

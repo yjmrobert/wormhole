@@ -31,6 +31,8 @@ type fixture struct {
 	mu      sync.Mutex
 	aliceIn []bus.Delivery
 	wake    chan struct{}
+	// lastAsk is the envelope a Fail hook may act on.
+	lastAsk envelope.Envelope
 }
 
 func newFixture(t *testing.T, yaml string) *fixture {
@@ -126,6 +128,9 @@ limits: {per_sender_per_day: 2, per_day: 10}
 copilot: {workdir: /tmp/wh-test, safe_tools: [view, grep], model: test-model}
 daemon: {nak_backoff: 10ms}
 `
+
+// inPlaceCfg is autoCfg with replies appended to the asking session.
+var inPlaceCfg = strings.Replace(autoCfg, "daemon: {nak_backoff: 10ms}", "daemon: {nak_backoff: 10ms, reply_in_place: true}", 1)
 
 func runDaemon(t *testing.T, f *fixture) {
 	t.Helper()
@@ -310,6 +315,14 @@ func TestCreateFailureRetriesThenDeadLetters(t *testing.T) {
 	if creates != MaxDeliver {
 		t.Fatalf("create attempts = %d", creates)
 	}
+	// Each failed attempt rolled its record back, so nothing local claims
+	// the ask was delivered.
+	if _, err := f.store.Get(context.Background(), ask.ID); err == nil {
+		t.Fatal("thread row survived a dead-lettered ask")
+	}
+	if seen, _ := f.store.HasMessage(context.Background(), ask.ID); seen {
+		t.Fatal("message copy survived a dead-lettered ask")
+	}
 }
 
 func TestPausedLeavesMessageOnBus(t *testing.T) {
@@ -431,7 +444,7 @@ func outboundThread(t *testing.T, f *fixture, root string) envelope.Envelope {
 }
 
 func TestReplyResumesAskingSessionInAutoMode(t *testing.T) {
-	f := newFixture(t, autoCfg)
+	f := newFixture(t, inPlaceCfg)
 	runDaemon(t, f)
 	ctx := context.Background()
 	ask := outboundThread(t, f, "bob-root")
@@ -467,7 +480,7 @@ func TestReplyResumesAskingSessionInAutoMode(t *testing.T) {
 }
 
 func TestReplyFallsBackToNewSessionWhenResumeFails(t *testing.T) {
-	f := newFixture(t, autoCfg)
+	f := newFixture(t, inPlaceCfg)
 	f.app.Fail = func(op string) error {
 		if op == "resume" {
 			return errors.New("session is in use by the app")
@@ -506,8 +519,8 @@ func TestReplyOpensNewSessionWithoutAskingSessionOrWhenDisabled(t *testing.T) {
 		cfg  string
 		root string
 	}{
-		{"no asking session id", autoCfg, ""},
-		{"reply_in_place off", strings.Replace(autoCfg, "daemon: {nak_backoff: 10ms}", "daemon: {nak_backoff: 10ms, reply_in_place: false}", 1), "bob-root"},
+		{"no asking session id", inPlaceCfg, ""},
+		{"reply_in_place off (the default)", autoCfg, "bob-root"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -549,5 +562,137 @@ func TestInboxMessageOnOpenThreadStagesWithoutShowing(t *testing.T) {
 	}
 	if got := ContinueSession(f.bob.cfg, th); got != "bob-sess" {
 		t.Fatalf("ContinueSession = %q", got)
+	}
+}
+
+// agentReplies is what `wormhole reply` does from inside the kickoff:
+// it needs the thread and the ask on disk, and it leaves the thread in
+// state replied. It fails the way the CLI would when they are missing.
+func agentReplies(t *testing.T, f *fixture, ask envelope.Envelope) error {
+	t.Helper()
+	ctx := context.Background()
+	th, err := f.store.Get(ctx, ask.ID)
+	if err != nil {
+		return err
+	}
+	last, err := f.store.LastMessage(ctx, ask.ID)
+	if err != nil {
+		return err
+	}
+	if last.ID != ask.ID {
+		return errors.New("last message is not the ask")
+	}
+	reply := envelope.NewFollowUp(envelope.TypeReply, ask, envelope.Peer{User: "bob", Host: "bob-laptop"}, "alice", "pong", time.Now())
+	th.State = threads.StateReplied
+	if err := f.store.Put(ctx, th); err != nil {
+		return err
+	}
+	return f.store.AddMessage(ctx, reply, threads.DirectionOut)
+}
+
+func TestAgentCanReplyWhileKickoffRuns(t *testing.T) {
+	// M0: the agent inside the headless session ran `wormhole reply` and
+	// got "thread is not on this machine", because the daemon wrote the
+	// thread only after the kickoff process exited.
+	f := newFixture(t, autoCfg)
+	var replyErr error
+	f.app.Fail = func(op string) error {
+		if op == "create" {
+			replyErr = agentReplies(t, f, f.lastAsk)
+		}
+		return nil
+	}
+	runDaemon(t, f)
+	ask := aliceAsk("Reply with the single word pong.")
+	f.lastAsk = ask
+	f.deliver(ask, "alice")
+	acks := f.waitAck(t, 1)
+	if acks[0].Env.Body != "delivered" {
+		t.Fatalf("ack = %+v", acks[0].Env)
+	}
+	if replyErr != nil {
+		t.Fatalf("reply from inside the kickoff failed: %v", replyErr)
+	}
+	calls := f.waitOps(t, 3)
+	th, err := f.store.Get(context.Background(), ask.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The daemon must not overwrite the state the reply set.
+	if th.State != threads.StateReplied || th.LocalSessionID != calls[0].Session.ID || !th.Opened {
+		t.Fatalf("thread = %+v", th)
+	}
+	msgs, _ := f.store.Messages(context.Background(), ask.ID)
+	if len(msgs) != 2 || msgs[0].Direction != threads.DirectionIn || msgs[1].Direction != threads.DirectionOut {
+		t.Fatalf("messages = %+v", msgs)
+	}
+}
+
+func TestKickoffErrorAfterReplyKeepsThread(t *testing.T) {
+	// The agent answered, then the copilot process ended badly (timeout,
+	// non-zero exit). That is a delivered ask, not one to run again.
+	f := newFixture(t, autoCfg)
+	f.app.Fail = func(op string) error {
+		if op == "create" {
+			if err := agentReplies(t, f, f.lastAsk); err != nil {
+				return err
+			}
+			return errors.New("copilot exited 1 after the reply")
+		}
+		return nil
+	}
+	runDaemon(t, f)
+	ask := aliceAsk("Reply with the single word pong.")
+	f.lastAsk = ask
+	f.deliver(ask, "alice")
+	acks := f.waitAck(t, 1)
+	if acks[0].Env.Body != "delivered" {
+		t.Fatalf("ack = %+v", acks[0].Env)
+	}
+	f.waitOps(t, 3)
+	creates := 0
+	for _, op := range f.app.Ops() {
+		if op == "create" {
+			creates++
+		}
+	}
+	if creates != 1 {
+		t.Fatalf("create attempts = %d, want 1", creates)
+	}
+	th, err := f.store.Get(context.Background(), ask.ID)
+	if err != nil || th.State != threads.StateReplied {
+		t.Fatalf("thread = %+v err = %v", th, err)
+	}
+}
+
+func TestFollowUpSendableWhileKickoffRuns(t *testing.T) {
+	// Same ordering for a reply that opens a new session: a `wormhole
+	// send` from inside it needs the reply on disk to build the next hop.
+	f := newFixture(t, autoCfg)
+	var sawReply error
+	f.app.Fail = func(op string) error {
+		if op == "create" {
+			last, err := f.store.LastMessage(context.Background(), f.lastAsk.ThreadID)
+			if err != nil {
+				sawReply = err
+			} else if last.Type != envelope.TypeReply || last.Direction != threads.DirectionIn {
+				sawReply = errors.New("last message is not the inbound reply")
+			}
+		}
+		return nil
+	}
+	runDaemon(t, f)
+	ask := outboundThread(t, f, "")
+	f.lastAsk = ask
+	reply := envelope.NewFollowUp(envelope.TypeReply, ask, envelope.Peer{User: "alice"}, "bob", "Y is fine.", time.Now())
+	f.deliver(reply, "alice")
+	f.waitAck(t, 1)
+	calls := f.waitOps(t, 3)
+	if sawReply != nil {
+		t.Fatalf("inside the kickoff: %v", sawReply)
+	}
+	th, _ := f.store.Get(context.Background(), ask.ID)
+	if th.State != threads.StateReplied || th.LocalSessionID != calls[0].Session.ID {
+		t.Fatalf("thread = %+v", th)
 	}
 }

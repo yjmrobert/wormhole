@@ -79,23 +79,31 @@ bus:
   password_file: ~/.config/wormhole/password
 senders:
   - bob                             # inbox mode: a person reads it first
-  - {handle: carol, mode: auto}     # auto mode: runs headless, read-only tools
+  - {handle: carol, mode: auto}     # auto mode: runs headless with the tools below
 limits:
   per_sender_per_day: 20
   per_day: 50
   max_hops: 6
 copilot:
   workdir: ~/wormhole
-  safe_tools: []                    # the --available-tools set for auto mode (an M0 output)
+  safe_tools: []                    # --available-tools for auto mode; empty refuses auto mode
+  extra_args: []                    # the CLI's permission flags, appended to every run
 repos:
   "<owner>/<repo>": /home/alice/src/repo
 daemon:
-  reply_in_place: true              # append replies to the session that asked; false: new session
+  reply_in_place: false             # true: append replies to the session that asked (see usage)
 ```
 
 The daemon refuses to start if this file is readable by other users or if
 `password_file` or `creds` points inside a git working tree. Auto mode is
 refused while `safe_tools` is empty.
+
+Answering needs the shell tool (the agent runs `wormhole reply`), so a
+usable `safe_tools` is not read-only on its own. Pin it down with the
+Copilot CLI's permission flags in `extra_args`: allow the shell for
+`wormhole` and deny every subcommand but `reply`. The flag names depend on
+the CLI version; the profile that worked on 1.0.105 is in the design
+page's "M0 results".
 
 ## 3. The skill
 

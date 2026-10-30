@@ -130,7 +130,7 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 			if !c.json {
 				fmt.Fprintf(a.Stderr, "appending the message to session %s (it runs headless first; this can take a minute)\n", sessionID)
 			}
-			if err := app.Resume(ctx, ghapp.Session{ID: sessionID, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model}); err != nil {
+			if err := app.Resume(ctx, ghapp.Session{ID: sessionID, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model, ExtraArgs: cfg.Copilot.ExtraArgs}); err != nil {
 				fmt.Fprintf(a.Stderr, "could not resume session %s (%v); starting a new one\n", sessionID, err)
 				sessionID = ""
 			} else {
@@ -146,7 +146,7 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 			if !c.json {
 				fmt.Fprintf(a.Stderr, "starting session %s in %s (the kickoff runs headless first; this can take a minute)\n", sessionID, workdir)
 			}
-			err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model})
+			err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model, ExtraArgs: cfg.Copilot.ExtraArgs})
 			if err != nil {
 				return fail(ExitUnavailable, "start session: %v", err)
 			}

@@ -350,6 +350,26 @@ func (s *Store) AddMessage(ctx context.Context, e envelope.Envelope, dir Directi
 	return nil
 }
 
+// DeleteMessage removes one stored message copy. Deleting a message that
+// is not there is not an error.
+func (s *Store) DeleteMessage(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete message: %w", err)
+	}
+	return nil
+}
+
+// DeleteThread removes a thread and every message copy on it.
+func (s *Store) DeleteThread(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE thread_id = ?`, id); err != nil {
+		return fmt.Errorf("delete thread messages: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM threads WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete thread: %w", err)
+	}
+	return nil
+}
+
 // HasMessage reports whether a message id was already stored.
 func (s *Store) HasMessage(ctx context.Context, id string) (bool, error) {
 	var n int

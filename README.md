@@ -17,10 +17,14 @@ phones home.
 ## Status
 
 Pre-1.0. The round trip works end to end against a real NATS server in the
-test suite; the pieces that touch the Copilot app (`copilot -p`, the
-`ghapp://` deep link, `--available-tools`) are wired but still need the M0
-spike in `docs/m0-spike.md` to be run on real machines. Docs: https://yjmrobert.github.io/wormhole/ (design, install, usage,
-roadmap). Binaries: https://github.com/yjmrobert/wormhole/releases.
+test suite and was run once on two real machines (October 2026, Copilot
+CLI 1.0.105): an ask became a session in the other machine's app and the
+agent's reply came back in about four seconds. What that run did not show
+is a reply reaching the agent already running in the session that asked;
+replies therefore open a `Reply from ^bob` session by default, and
+`docs/design.md` ("M0 results") has the details. Docs:
+https://yjmrobert.github.io/wormhole/ (design, install, usage, roadmap).
+Binaries: https://github.com/yjmrobert/wormhole/releases.
 
 Linux only for now; macOS and Windows openers come later.
 
@@ -34,11 +38,14 @@ alice's daemon ◀── bus ◀──wormhole reply── bob's session (agent 
 - **Inbox mode (default).** Bob's daemon stages the message and notifies
   him; nothing runs until he opens it with `wormhole open`.
 - **Auto mode (opt-in per sender).** Bob's daemon runs the kickoff headless
-  with a read-only tool set, so Bob's agent answers in seconds.
-- **Replies land where the ask was made.** Alice's daemon appends Bob's
-  answer to the session that asked (`copilot --resume`), so her agent can
-  act on it; a separate `Reply from ^bob` session only when that session
-  is unknown or cannot be resumed (`daemon.reply_in_place`).
+  with a restricted tool set (`copilot.safe_tools` plus the CLI's
+  permission flags in `copilot.extra_args`), so Bob's agent answers in
+  seconds.
+- **Replies come back as a session.** Alice's daemon opens a `Reply from
+  ^bob` session with the answer. `daemon.reply_in_place: true` appends it
+  to the session that asked instead (`copilot --resume`); it shows in that
+  session's transcript, but an agent the app is already running there does
+  not see it, which is why it is off by default.
 
 Either way the sender is bound by the bus subject (`wh.inbox.bob.alice`) and
 enforced by the server's per-user permissions, not by anything in the
@@ -94,7 +101,8 @@ Every command takes `--json` and returns a stable exit code: 0 ok, 1 error,
 - Sender allowlist on the recipient; unknown senders get a rejection receipt
   and are never materialized.
 - Inbox mode by default; auto mode per sender, with `--available-tools`
-  limited to the configured read-only set.
+  limited to the configured set and the shell pinned to `wormhole reply`
+  by the permission flags in `copilot.extra_args`.
 - Fixed preamble marks inbound text as a colleague's request, not
   instructions, and states whether a person reviewed it.
 - Secret scan on every outbound body; 32 KB cap; bodies never logged.

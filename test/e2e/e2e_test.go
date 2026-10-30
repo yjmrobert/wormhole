@@ -285,7 +285,7 @@ handle: alice
 bus: {kind: %s, url: %q, password_file: %q}
 senders: [bob]
 copilot: {workdir: /tmp/wh-e2e/alice}
-daemon: {registry_interval: 1s}
+daemon: {registry_interval: 1s, reply_in_place: true}
 `
 
 const bobYAML = `
