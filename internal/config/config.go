@@ -93,8 +93,6 @@ type Limits struct {
 	PerSenderPerDay int `yaml:"per_sender_per_day"`
 	PerDay          int `yaml:"per_day"`
 	MaxHops         int `yaml:"max_hops"`
-	// MinSkillVersion rejects messages produced by an older skill.
-	MinSkillVersion string `yaml:"min_skill_version"`
 }
 
 // Copilot configures how sessions are materialized.
@@ -103,9 +101,16 @@ type Copilot struct {
 	Model  string `yaml:"model"`
 	// Workdir is where sessions start when no repo mapping applies.
 	Workdir string `yaml:"workdir"`
-	// SafeTools is the --available-tools set for auto mode. Its exact
-	// contents are an M0 output; the daemon refuses auto mode when empty.
+	// SafeTools is the --available-tools set for auto mode. The daemon
+	// refuses auto mode when it is empty. M0 showed that answering needs
+	// the shell tool (the agent runs `wormhole reply`), so the set is not
+	// read-only by itself: ExtraArgs carry the permission flags that pin
+	// the shell down to that command.
 	SafeTools []string `yaml:"safe_tools"`
+	// ExtraArgs are appended verbatim to every copilot invocation the
+	// daemon makes (and to `wormhole open`): the Copilot CLI's permission
+	// flags, model options, anything the installed version needs.
+	ExtraArgs []string `yaml:"extra_args"`
 }
 
 // Daemon tunes the subscriber.
@@ -117,7 +122,9 @@ type Daemon struct {
 	// ReplyInPlace appends a reply to the session that asked (or to the
 	// session already tied to the thread) instead of opening a new
 	// "Reply from" session. A new session is still used when the asking
-	// session's id is unknown or the resume fails.
+	// session's id is unknown or the resume fails. Off by default: M0
+	// showed the appended turn lands in the session's transcript but not
+	// in the context of an agent the app is running in that session.
 	ReplyInPlace *bool `yaml:"reply_in_place"`
 }
 
@@ -238,7 +245,7 @@ func (c *Config) applyDefaults() {
 		c.Daemon.Notify = ptr(true)
 	}
 	if c.Daemon.ReplyInPlace == nil {
-		c.Daemon.ReplyInPlace = ptr(true)
+		c.Daemon.ReplyInPlace = ptr(false)
 	}
 	for k, v := range c.Repos {
 		c.Repos[k] = Expand(v)
@@ -406,9 +413,15 @@ copilot:
   binary: copilot
   # model: ""            # empty = the app default (admin policy may override)
   workdir: ~/wormhole
-  # The --available-tools set for auto mode. Leave empty until M0 has
-  # established which tool names are read-only on your app version.
+  # The --available-tools set for auto mode; empty refuses auto mode.
+  # Answering needs the shell tool (the agent runs wormhole reply), so a
+  # usable set is not read-only on its own: pin the shell down with the
+  # Copilot CLI's permission flags in extra_args. Tested on Copilot CLI
+  # 1.0.105: safe_tools [view, grep, glob, bash] plus allow/deny flags that
+  # permit only wormhole reply; see docs/design.md, M0 results.
   safe_tools: []
+  # Appended verbatim to every copilot run the daemon makes.
+  extra_args: []
 
 # Map a repo named in an ask's context to a local checkout.
 repos:
@@ -419,7 +432,9 @@ daemon:
   nak_backoff: 30s
   open_app: true
   notify: true
-  # A reply is appended to the session that asked (copilot --resume) so the
-  # asking agent can act on it; false always opens a new "Reply from" session.
-  reply_in_place: true
+  # true appends a reply to the session that asked (copilot --resume).
+  # Off by default: M0 showed the turn lands in the transcript but not in
+  # the context of an agent the app is running in that session, and the
+  # resume writes even while the app holds the session.
+  reply_in_place: false
 `

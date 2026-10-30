@@ -193,13 +193,21 @@ func (a *App) doctor(ctx context.Context, c *common, args []string) error {
 	}
 	display := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 	add("display", display, "", "systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS")
+	// Without the session bus the Copilot CLI waits on a keychain it cannot
+	// reach; M0 measured a two-minute stall per kickoff.
+	add("session bus", os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "", "", "DBUS_SESSION_BUS_ADDRESS is unset; copilot stalls on its keychain without it: systemctl --user import-environment DBUS_SESSION_BUS_ADDRESS")
 
 	if *deepLink {
 		app := a.NewGHApp(cfg)
 		id := ghapp.NewSessionID()
-		err := app.Create(ctx, ghapp.Session{ID: id, Name: "wormhole doctor", Kickoff: "Reply with the single word: ok", Workdir: cfg.WorkdirFor("")})
+		err := app.Create(ctx, ghapp.Session{ID: id, Name: "wormhole doctor", Kickoff: "Reply with the single word: ok", Workdir: cfg.WorkdirFor(""), ExtraArgs: cfg.Copilot.ExtraArgs})
 		if err != nil {
-			add("deep-link: create session", false, err.Error(), "")
+			var re *ghapp.RunError
+			detail := err.Error()
+			if errors.As(err, &re) && re.Output != "" {
+				detail += ": " + re.Output
+			}
+			add("deep-link: create session", false, detail, "")
 		} else {
 			add("deep-link: create session", true, id, "")
 			if err := app.Open(ctx, id); err != nil {
@@ -355,7 +363,9 @@ func (a *App) admin(ctx context.Context, c *common, args []string) error {
 		if err != nil {
 			return err
 		}
-		pw = string(raw)
+		// Like the daemon's password_file: the trailing newline every
+		// editor and `echo` leave is not part of the password.
+		pw = strings.TrimSpace(string(raw))
 	} else {
 		var err error
 		if pw, err = a.readSecret(fmt.Sprintf("password for %s: ", *user)); err != nil {

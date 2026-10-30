@@ -102,6 +102,9 @@ type Message struct {
 // ErrNotFound is returned when a thread or message does not exist.
 var ErrNotFound = errors.New("not found")
 
+// SchemaVersion is stored in the database's user_version pragma.
+const SchemaVersion = 1
+
 // Store is the SQLite-backed thread map.
 type Store struct {
 	db *sql.DB
@@ -160,6 +163,23 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate threads db: %w", err)
+	}
+	// user_version marks the schema so a later change can tell a fresh
+	// file from one that needs migrating.
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("read schema version: %w", err)
+	}
+	switch {
+	case version == 0:
+		if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion)); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("set schema version: %w", err)
+		}
+	case version > SchemaVersion:
+		db.Close()
+		return nil, fmt.Errorf("threads db schema version %d is newer than this binary supports (%d)", version, SchemaVersion)
 	}
 	if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
 		db.Close()
@@ -346,6 +366,26 @@ func (s *Store) AddMessage(ctx context.Context, e envelope.Envelope, dir Directi
 		e.ID, Preview(e.Body, 80), fmtTime(e.CreatedAt), fmtTime(time.Now()), e.ThreadID, fmtTime(e.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("update thread preview: %w", err)
+	}
+	return nil
+}
+
+// DeleteMessage removes one stored message copy. Deleting a message that
+// is not there is not an error.
+func (s *Store) DeleteMessage(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete message: %w", err)
+	}
+	return nil
+}
+
+// DeleteThread removes a thread and every message copy on it.
+func (s *Store) DeleteThread(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE thread_id = ?`, id); err != nil {
+		return fmt.Errorf("delete thread messages: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM threads WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete thread: %w", err)
 	}
 	return nil
 }

@@ -33,9 +33,11 @@ const (
 	BucketName   = "WORMHOLE_USERS"
 	StreamMaxAge = 7 * 24 * time.Hour
 	// MaxMsgSize leaves room for the envelope around a 32 KB body.
-	MaxMsgSize  = 64 * 1024
-	MaxDeliver  = 5
-	AckWait     = 60 * time.Second
+	MaxMsgSize = 64 * 1024
+	MaxDeliver = 5
+	// AckWait covers a headless kickoff run: the daemon acks only once the
+	// session exists, and M0 measured first runs over two minutes.
+	AckWait     = 10 * time.Minute
 	PresenceTTL = time.Hour
 )
 

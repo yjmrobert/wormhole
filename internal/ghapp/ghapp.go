@@ -38,6 +38,10 @@ type Session struct {
 	Model string
 	// AvailableTools, when non-empty, restricts the run to --available-tools.
 	AvailableTools []string
+	// ExtraArgs are appended verbatim to every copilot invocation: the
+	// deployment's permission flags (which commands the agent may run) and
+	// anything else the app version needs. They are never shell-expanded.
+	ExtraArgs []string
 }
 
 // App is what the daemon needs from the Copilot app.
@@ -103,6 +107,19 @@ func NewExec(binary string) *Exec {
 // ErrNotInstalled is returned when a required binary is missing from PATH.
 var ErrNotInstalled = errors.New("binary not found on PATH")
 
+// RunError is a failed command. Error() names the command and its exit
+// status only: the captured output can quote the kickoff, so it is kept
+// apart for callers that show it to the person (doctor), and never ends up
+// in the daemon's logs through the error string.
+type RunError struct {
+	Cmd    string
+	Err    error
+	Output string
+}
+
+func (e *RunError) Error() string { return e.Cmd + ": " + e.Err.Error() }
+func (e *RunError) Unwrap() error { return e.Err }
+
 // Check verifies the copilot binary is on PATH.
 func (e *Exec) Check() error {
 	if _, err := exec.LookPath(e.Binary); err != nil {
@@ -127,13 +144,13 @@ func (e *Exec) run(ctx context.Context, dir string, name string, args ...string)
 		if len(msg) > 400 {
 			msg = msg[:400] + "…"
 		}
-		return fmt.Errorf("%s: %w: %s", name, err, msg)
+		return &RunError{Cmd: name, Err: err, Output: msg}
 	}
 	return nil
 }
 
 // Create runs: copilot -p <kickoff> --session-id <id> -n <name> [--model m]
-// [--available-tools a,b].
+// [--available-tools a,b] [extra args].
 func (e *Exec) Create(ctx context.Context, s Session) error {
 	if err := os.MkdirAll(s.Workdir, 0o755); err != nil {
 		return fmt.Errorf("workdir: %w", err)
@@ -145,11 +162,12 @@ func (e *Exec) Create(ctx context.Context, s Session) error {
 	if len(s.AvailableTools) > 0 {
 		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
 	}
+	args = append(args, s.ExtraArgs...)
 	return e.run(ctx, s.Workdir, e.Binary, args...)
 }
 
 // Resume runs: copilot -p <prompt> --resume=<id> [--model m]
-// [--available-tools a,b]. It fails when the session does not exist on
+// [--available-tools a,b] [extra args]. It fails when the session does not exist on
 // this machine or the app holds it locked; callers fall back to Create.
 func (e *Exec) Resume(ctx context.Context, s Session) error {
 	if s.Workdir != "" {
@@ -164,6 +182,7 @@ func (e *Exec) Resume(ctx context.Context, s Session) error {
 	if len(s.AvailableTools) > 0 {
 		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
 	}
+	args = append(args, s.ExtraArgs...)
 	return e.run(ctx, s.Workdir, e.Binary, args...)
 }
 

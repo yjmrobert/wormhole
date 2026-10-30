@@ -86,6 +86,7 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
 	c.bind(fs)
 	noStart := fs.Bool("no-start", false, "do not run a staged message; just print it")
+	yes := fs.Bool("yes", false, "run a staged message without showing it first")
 	pos, err := a.parse(fs, args)
 	if err != nil {
 		return err
@@ -123,14 +124,29 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 		if workdir == "" {
 			workdir = cfg.WorkdirFor(t.Repo)
 		}
-		// A person asked for this, so it runs with their normal tool set:
-		// no --available-tools restriction here.
+		// Inbox mode's promise is that a person reads inbound text before
+		// any tool runs on it. The message runs with the person's normal
+		// tool set, so the person, not an agent, has to be the one asking:
+		// show it and confirm, and off a terminal require --yes.
+		if !*yes {
+			if !a.IsTerminal() {
+				return fail(ExitRefused, "not a terminal: show the staged message to the person (wormhole open --no-start), then rerun with --yes")
+			}
+			fmt.Fprintf(a.Stdout, "%s\n\n", t.StagedKickoff)
+			ok, err := a.confirm(fmt.Sprintf("Run this message from ^%s with your normal tools?", t.Peer))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fail(ExitRefused, "not started; it stays in the inbox")
+			}
+		}
 		sessionID := daemon.ContinueSession(cfg, t)
 		if sessionID != "" {
 			if !c.json {
 				fmt.Fprintf(a.Stderr, "appending the message to session %s (it runs headless first; this can take a minute)\n", sessionID)
 			}
-			if err := app.Resume(ctx, ghapp.Session{ID: sessionID, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model}); err != nil {
+			if err := app.Resume(ctx, ghapp.Session{ID: sessionID, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model, ExtraArgs: cfg.Copilot.ExtraArgs}); err != nil {
 				fmt.Fprintf(a.Stderr, "could not resume session %s (%v); starting a new one\n", sessionID, err)
 				sessionID = ""
 			} else {
@@ -146,7 +162,7 @@ func (a *App) open(ctx context.Context, c *common, args []string) error {
 			if !c.json {
 				fmt.Fprintf(a.Stderr, "starting session %s in %s (the kickoff runs headless first; this can take a minute)\n", sessionID, workdir)
 			}
-			err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model})
+			err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model, ExtraArgs: cfg.Copilot.ExtraArgs})
 			if err != nil {
 				return fail(ExitUnavailable, "start session: %v", err)
 			}

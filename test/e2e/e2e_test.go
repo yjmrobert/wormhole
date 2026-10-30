@@ -208,9 +208,19 @@ func roundTrip(t *testing.T, alice, bob *side) {
 		t.Fatalf("inbox = %v", out)
 	}
 
+	// Off a terminal, open refuses to run the staged text without --yes:
+	// only a person may press go on inbox-mode text. Nothing was started.
+	before := len(alice.app.Snapshot())
+	if code, _, _ := alice.cli(t, "", "open", threadID); code != cli.ExitRefused || len(alice.app.Snapshot()) != before {
+		t.Fatalf("open without --yes: code %d, app calls %d -> %d", code, before, len(alice.app.Snapshot()))
+	}
+	if th := threadState(t, alice, threadID); th.StagedKickoff == "" {
+		t.Fatal("refused open cleared the staged kickoff")
+	}
+
 	// alice opens it: the reply is appended to the session that asked,
 	// with her normal tools, and that session is shown in the app.
-	code, out, stderr = alice.cli(t, "", "open", threadID)
+	code, out, stderr = alice.cli(t, "", "open", threadID, "--yes")
 	if code != 0 || out["started"] != true || out["resumed"] != true || out["opened"] != true || out["session_id"] != "alice-root-session" {
 		t.Fatalf("open = %d %v %s", code, out, stderr)
 	}
@@ -285,7 +295,7 @@ handle: alice
 bus: {kind: %s, url: %q, password_file: %q}
 senders: [bob]
 copilot: {workdir: /tmp/wh-e2e/alice}
-daemon: {registry_interval: 1s}
+daemon: {registry_interval: 1s, reply_in_place: true}
 `
 
 const bobYAML = `

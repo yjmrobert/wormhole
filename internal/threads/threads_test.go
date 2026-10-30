@@ -3,8 +3,10 @@ package threads
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,6 +115,26 @@ func TestCountInboundAndExpire(t *testing.T) {
 	th, _ := s.Get(ctx, stale.ID)
 	if th.State != StateExpired {
 		t.Fatal(th.State)
+	}
+}
+
+func TestSchemaVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "threads.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != SchemaVersion {
+		t.Fatalf("user_version = %d, %v; want %d", v, err, SchemaVersion)
+	}
+	if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion+1)); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	// A newer file is refused rather than misread.
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "newer") {
+		t.Fatalf("open newer schema: %v", err)
 	}
 }
 

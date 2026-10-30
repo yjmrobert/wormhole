@@ -96,4 +96,20 @@ func TestExecArguments(t *testing.T) {
 	if string(got) != "-p\nfollow up\n--resume=sid\n--model\nm\n--available-tools\nview,grep\n" {
 		t.Fatalf("restricted resume args: %q", got)
 	}
+	// Deployment flags ride along last, one argument each, never joined.
+	extra := []string{"--allow-tool", "shell(wormhole:*)"}
+	if err := e.Create(context.Background(), Session{ID: "sid", Name: "n", Kickoff: "k", Workdir: dir, ExtraArgs: extra}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(out)
+	if string(got) != "-p\nk\n--session-id\nsid\n-n\nn\n--allow-tool\nshell(wormhole:*)\n" {
+		t.Fatalf("create with extra args: %q", got)
+	}
+	if err := e.Resume(context.Background(), Session{ID: "sid", Kickoff: "k", Workdir: dir, ExtraArgs: extra}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(out)
+	if string(got) != "-p\nk\n--resume=sid\n--allow-tool\nshell(wormhole:*)\n" {
+		t.Fatalf("resume with extra args: %q", got)
+	}
 }
