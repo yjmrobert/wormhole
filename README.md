@@ -124,6 +124,16 @@ Every command takes `--json` and returns a stable exit code: 0 ok, 1 error,
 
 See `SECURITY.md` for reporting and `docs/design.md` for the full picture.
 
+## Releasing
+
+A release is a `v*` tag on `main`, nothing more. `make release TAG=v0.4.0`
+checks that you are on an up-to-date, clean `main`, runs the tests, tags,
+and pushes the tag; the release workflow then builds the Linux tarballs
+and publishes the GitHub Release. Where a tag cannot be pushed (a hosted
+session behind a git proxy), dispatch the release workflow on `main` with
+the version: it creates the same tag and carries on. Tags that are not on
+`main` are refused.
+
 ## License
 
 Apache-2.0.
