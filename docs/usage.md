@@ -56,7 +56,7 @@ read from stdin.
 | `wormhole reply <thread_id> "<text>" [--yes]` | Answer on a thread, from inside a relayed session. |
 | `wormhole send <user> --thread <id> "<text>" [--yes]` | Free-form follow-up on an open thread. |
 | `wormhole inbox` | Staged inbound asks and replies waiting for you. |
-| `wormhole open <thread_id>` | Run a staged message: append it to the session the thread belongs to, or start a new session; then show it in the app. Prints `copilot --resume=<id>` as a fallback. |
+| `wormhole open <thread_id> [--yes] [--no-start]` | Run a staged message with your normal tools: shows it and asks first (off a terminal, `--yes` is required), appends it to the session the thread belongs to or starts a new one, then shows it in the app. Prints `copilot --resume=<id>` as a fallback. `--no-start` only prints the message. |
 | `wormhole threads [--open] [--peer <user>]` | Local thread map: thread, peer, state, session, last message. |
 | `wormhole users` | Handles on the bus with host, mode and presence. |
 | `wormhole daemon [--once] [--pause\|--resume]` | Run the subscriber. `--pause` is the local kill switch. |

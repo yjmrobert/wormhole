@@ -93,8 +93,6 @@ type Limits struct {
 	PerSenderPerDay int `yaml:"per_sender_per_day"`
 	PerDay          int `yaml:"per_day"`
 	MaxHops         int `yaml:"max_hops"`
-	// MinSkillVersion rejects messages produced by an older skill.
-	MinSkillVersion string `yaml:"min_skill_version"`
 }
 
 // Copilot configures how sessions are materialized.

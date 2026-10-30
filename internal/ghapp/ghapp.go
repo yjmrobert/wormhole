@@ -107,6 +107,19 @@ func NewExec(binary string) *Exec {
 // ErrNotInstalled is returned when a required binary is missing from PATH.
 var ErrNotInstalled = errors.New("binary not found on PATH")
 
+// RunError is a failed command. Error() names the command and its exit
+// status only: the captured output can quote the kickoff, so it is kept
+// apart for callers that show it to the person (doctor), and never ends up
+// in the daemon's logs through the error string.
+type RunError struct {
+	Cmd    string
+	Err    error
+	Output string
+}
+
+func (e *RunError) Error() string { return e.Cmd + ": " + e.Err.Error() }
+func (e *RunError) Unwrap() error { return e.Err }
+
 // Check verifies the copilot binary is on PATH.
 func (e *Exec) Check() error {
 	if _, err := exec.LookPath(e.Binary); err != nil {
@@ -131,7 +144,7 @@ func (e *Exec) run(ctx context.Context, dir string, name string, args ...string)
 		if len(msg) > 400 {
 			msg = msg[:400] + "…"
 		}
-		return fmt.Errorf("%s: %w: %s", name, err, msg)
+		return &RunError{Cmd: name, Err: err, Output: msg}
 	}
 	return nil
 }

@@ -102,6 +102,9 @@ type Message struct {
 // ErrNotFound is returned when a thread or message does not exist.
 var ErrNotFound = errors.New("not found")
 
+// SchemaVersion is stored in the database's user_version pragma.
+const SchemaVersion = 1
+
 // Store is the SQLite-backed thread map.
 type Store struct {
 	db *sql.DB
@@ -160,6 +163,23 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate threads db: %w", err)
+	}
+	// user_version marks the schema so a later change can tell a fresh
+	// file from one that needs migrating.
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("read schema version: %w", err)
+	}
+	switch {
+	case version == 0:
+		if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion)); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("set schema version: %w", err)
+		}
+	case version > SchemaVersion:
+		db.Close()
+		return nil, fmt.Errorf("threads db schema version %d is newer than this binary supports (%d)", version, SchemaVersion)
 	}
 	if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
 		db.Close()

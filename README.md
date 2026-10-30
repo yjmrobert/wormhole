@@ -84,7 +84,7 @@ wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session 
 wormhole reply <thread_id> "<text>"            # from inside a relayed session
 wormhole send <user> --thread <id> "<text>"    # free-form follow-up on an open thread
 wormhole inbox                                 # staged inbound messages waiting for you
-wormhole open <thread_id>                      # run a staged message in its session and show it; prints the --resume fallback
+wormhole open <thread_id> [--yes]              # read a staged message, confirm, run it in its session and show it; prints the --resume fallback
 wormhole threads [--open] [--peer <user>]      # local thread map
 wormhole users                                 # handles on the bus, with presence
 wormhole daemon [--once] [--pause|--resume]    # the subscriber; pause is the local kill switch

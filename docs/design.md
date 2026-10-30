@@ -128,7 +128,7 @@ minutes.
 | | Inbox (default) | Auto (opt-in per sender) |
 | --- | --- | --- |
 | What the daemon does | Stores the kickoff locally, sends a notification | Runs `copilot -p` with the kickoff, opens the deep link |
-| Who presses go | The person, via `wormhole open`, with their normal permissions | The recipient's agent, headless, restricted tool set |
+| Who presses go | The person, via `wormhole open`, which shows the text and asks first (`--yes` off a terminal), with their normal permissions | The recipient's agent, headless, restricted tool set |
 | Tool exposure to inbound text | None until a person reads it | `--available-tools` safe set plus the permission flags in `copilot.extra_args` |
 | Config | `senders: [alice]` | `senders: [{handle: alice, mode: auto}]` |
 
