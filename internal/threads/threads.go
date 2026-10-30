@@ -37,6 +37,10 @@ const (
 	StateClosed State = "closed"
 	// StatePending: an inbound ask waiting in the inbox for a person.
 	StatePending State = "pending"
+	// StateDeclined: a person read the message and passed on it. On the
+	// recipient's machine `wormhole decline` sets it; on the asker's the
+	// `declined` ack does.
+	StateDeclined State = "declined"
 )
 
 // Direction says who opened the thread.
@@ -74,7 +78,10 @@ type Thread struct {
 	Opened bool `json:"opened"`
 	// StagedKickoff holds the kickoff prompt for an inbound inbox-mode
 	// thread whose session has not been started yet.
-	StagedKickoff string    `json:"-"`
+	StagedKickoff string `json:"-"`
+	// SnoozedUntil hides a staged message from the inbox until then; the
+	// daemon notifies once more when it passes and clears it.
+	SnoozedUntil  time.Time `json:"snoozed_until,omitzero"`
 	LastMessageID string    `json:"last_message_id,omitempty"`
 	LastPreview   string    `json:"last_preview,omitempty"`
 	LastMessageAt time.Time `json:"last_message_at"`
@@ -102,8 +109,9 @@ type Message struct {
 // ErrNotFound is returned when a thread or message does not exist.
 var ErrNotFound = errors.New("not found")
 
-// SchemaVersion is stored in the database's user_version pragma.
-const SchemaVersion = 1
+// SchemaVersion is stored in the database's user_version pragma. Version 2
+// added threads.snoozed_until.
+const SchemaVersion = 2
 
 // Store is the SQLite-backed thread map.
 type Store struct {
@@ -124,6 +132,7 @@ CREATE TABLE IF NOT EXISTS threads (
   workdir TEXT NOT NULL DEFAULT '',
   opened INTEGER NOT NULL DEFAULT 0,
   staged_kickoff TEXT NOT NULL DEFAULT '',
+  snoozed_until TEXT NOT NULL DEFAULT '',
   last_message_id TEXT NOT NULL DEFAULT '',
   last_preview TEXT NOT NULL DEFAULT '',
   last_message_at TEXT NOT NULL,
@@ -172,20 +181,33 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("read schema version: %w", err)
 	}
 	switch {
-	case version == 0:
-		if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion)); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("set schema version: %w", err)
-		}
 	case version > SchemaVersion:
 		db.Close()
 		return nil, fmt.Errorf("threads db schema version %d is newer than this binary supports (%d)", version, SchemaVersion)
+	case version < SchemaVersion:
+		if err := migrate(db, version); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("migrate threads db: %w", err)
+		}
 	}
 	if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
 		db.Close()
 		return nil, fmt.Errorf("chmod threads db: %w", err)
 	}
 	return &Store{db: db}, nil
+}
+
+// migrate brings a database at version from up to SchemaVersion. A fresh
+// file (version 0) already has the full schema from the CREATE statements
+// and only needs the version stamp.
+func migrate(db *sql.DB, from int) error {
+	if from == 1 {
+		if _, err := db.Exec(`ALTER TABLE threads ADD COLUMN snoozed_until TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion))
+	return err
 }
 
 // Close closes the database.
@@ -215,22 +237,30 @@ func (s *Store) Put(ctx context.Context, t Thread) error {
 	t.UpdatedAt = now
 	_, err := s.db.ExecContext(ctx, `INSERT INTO threads
 		(id, peer, direction, mode, state, local_session_id, root_session_id, title, repo, workdir, opened, staged_kickoff,
-		 last_message_id, last_preview, last_message_at, expires_at, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 snoozed_until, last_message_id, last_preview, last_message_at, expires_at, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		 peer=excluded.peer, direction=excluded.direction, mode=excluded.mode, state=excluded.state,
 		 local_session_id=excluded.local_session_id, root_session_id=excluded.root_session_id,
 		 title=excluded.title, repo=excluded.repo, workdir=excluded.workdir, opened=excluded.opened,
-		 staged_kickoff=excluded.staged_kickoff, last_message_id=excluded.last_message_id,
+		 staged_kickoff=excluded.staged_kickoff, snoozed_until=excluded.snoozed_until, last_message_id=excluded.last_message_id,
 		 last_preview=excluded.last_preview, last_message_at=excluded.last_message_at,
 		 expires_at=excluded.expires_at, updated_at=excluded.updated_at`,
 		t.ID, t.Peer, string(t.Direction), string(t.Mode), string(t.State), t.LocalSessionID, t.RootSessionID,
-		t.Title, t.Repo, t.Workdir, boolInt(t.Opened), t.StagedKickoff, t.LastMessageID, t.LastPreview,
+		t.Title, t.Repo, t.Workdir, boolInt(t.Opened), t.StagedKickoff, fmtOptTime(t.SnoozedUntil), t.LastMessageID, t.LastPreview,
 		fmtTime(t.LastMessageAt), fmtTime(t.ExpiresAt), fmtTime(t.CreatedAt), fmtTime(t.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("put thread: %w", err)
 	}
 	return nil
+}
+
+// fmtOptTime stores the zero time as the empty string.
+func fmtOptTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return fmtTime(t)
 }
 
 func boolInt(b bool) int {
@@ -241,7 +271,7 @@ func boolInt(b bool) int {
 }
 
 const threadCols = `id, peer, direction, mode, state, local_session_id, root_session_id, title, repo, workdir, opened,
-	staged_kickoff, last_message_id, last_preview, last_message_at, expires_at, created_at, updated_at`
+	staged_kickoff, snoozed_until, last_message_id, last_preview, last_message_at, expires_at, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -249,13 +279,16 @@ func scanThread(r scanner) (Thread, error) {
 	var t Thread
 	var dir, mode, state string
 	var opened int
-	var last, exp, created, updated string
+	var snoozed, last, exp, created, updated string
 	err := r.Scan(&t.ID, &t.Peer, &dir, &mode, &state, &t.LocalSessionID, &t.RootSessionID, &t.Title, &t.Repo, &t.Workdir,
-		&opened, &t.StagedKickoff, &t.LastMessageID, &t.LastPreview, &last, &exp, &created, &updated)
+		&opened, &t.StagedKickoff, &snoozed, &t.LastMessageID, &t.LastPreview, &last, &exp, &created, &updated)
 	if err != nil {
 		return Thread{}, err
 	}
 	t.Direction, t.Mode, t.State, t.Opened = Direction(dir), Mode(mode), State(state), opened == 1
+	if snoozed != "" {
+		t.SnoozedUntil = parseTime(snoozed)
+	}
 	t.LastMessageAt, t.ExpiresAt, t.CreatedAt, t.UpdatedAt = parseTime(last), parseTime(exp), parseTime(created), parseTime(updated)
 	return t, nil
 }
@@ -280,6 +313,11 @@ type Filter struct {
 	Direction Direction
 	State     State
 	Unopened  bool
+	// Staged selects threads with a message waiting in the inbox.
+	Staged bool
+	// SnoozeDue selects staged threads whose snooze has passed; the
+	// daemon notifies once more and clears it.
+	SnoozeDue *time.Time
 }
 
 // List returns threads newest first.
@@ -308,6 +346,13 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Thread, error) {
 	}
 	if f.Unopened {
 		where = append(where, "opened = 0 AND local_session_id <> ''")
+	}
+	if f.Staged {
+		where = append(where, "staged_kickoff <> ''")
+	}
+	if f.SnoozeDue != nil {
+		where = append(where, "staged_kickoff <> '' AND snoozed_until <> '' AND snoozed_until <= ?")
+		args = append(args, fmtTime(*f.SnoozeDue))
 	}
 	q := `SELECT ` + threadCols + ` FROM threads`
 	if len(where) > 0 {
@@ -468,6 +513,11 @@ func (s *Store) ExpireStale(ctx context.Context, now time.Time) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// Snoozed reports whether the thread is hidden from the inbox at now.
+func (t Thread) Snoozed(now time.Time) bool {
+	return !t.SnoozedUntil.IsZero() && now.Before(t.SnoozedUntil)
 }
 
 // Preview shortens a body to one line of at most n runes.

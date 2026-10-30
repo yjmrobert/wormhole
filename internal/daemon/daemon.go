@@ -14,7 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
@@ -41,7 +41,19 @@ type Daemon struct {
 	// paused reports whether the local kill switch is on.
 	paused     func() bool
 	pauseCheck time.Duration
+	tick       time.Duration
 	onHandled  func()
+	// exe is this binary, for the Show button's default command.
+	exe string
+
+	// Notification state; see notify.go.
+	mu           sync.Mutex
+	bubbleID     uint32
+	bubbleCancel context.CancelFunc
+	held         int // events held back by quiet hours
+	pending      int // events waiting for the next digest
+	opened       int // sessions opened in the app since the last summary
+	lastDigest   time.Time
 }
 
 // Options are the daemon's collaborators. Zero values get sane defaults.
@@ -56,15 +68,30 @@ type Options struct {
 	Paused func() bool
 	// PauseCheck is how often the kill switch is polled (default 2s).
 	PauseCheck time.Duration
+	// Tick is how often snoozes and summaries are checked (default 30s).
+	Tick time.Duration
 	// OnHandled, when set, is called after every delivery is handled.
 	OnHandled func()
+	// Exe is the wormhole binary the Show button's default command runs
+	// (default: this executable).
+	Exe string
 }
 
 // New wires a daemon.
 func New(o Options) *Daemon {
-	d := &Daemon{cfg: o.Config, bus: o.Bus, store: o.Store, app: o.App, log: o.Log, host: o.Host, now: o.Now, paused: o.Paused, pauseCheck: o.PauseCheck, onHandled: o.OnHandled}
+	d := &Daemon{cfg: o.Config, bus: o.Bus, store: o.Store, app: o.App, log: o.Log, host: o.Host, now: o.Now, paused: o.Paused, pauseCheck: o.PauseCheck, tick: o.Tick, onHandled: o.OnHandled, exe: o.Exe}
 	if d.pauseCheck == 0 {
 		d.pauseCheck = 2 * time.Second
+	}
+	if d.tick == 0 {
+		d.tick = 30 * time.Second
+	}
+	if d.exe == "" {
+		if p, err := os.Executable(); err == nil {
+			d.exe = p
+		} else {
+			d.exe = "wormhole"
+		}
 	}
 	if d.log == nil {
 		d.log = slog.Default()
@@ -78,6 +105,7 @@ func New(o Options) *Daemon {
 	if d.paused == nil {
 		d.paused = func() bool { _, err := os.Stat(config.PauseFile()); return err == nil }
 	}
+	d.lastDigest = d.now()
 	return d
 }
 
@@ -124,12 +152,19 @@ func (d *Daemon) Run(ctx context.Context) error {
 		if sub != nil {
 			_ = sub.Stop()
 		}
+		d.mu.Lock()
+		if d.bubbleCancel != nil {
+			d.bubbleCancel()
+		}
+		d.mu.Unlock()
 	}()
 	d.log.Info("wormholed running", "handle", d.cfg.Handle, "host", d.host, "senders", len(d.cfg.Senders), "paused", d.paused())
 	ticker := time.NewTicker(d.cfg.Daemon.RegistryInterval)
 	defer ticker.Stop()
 	pauseTicker := time.NewTicker(d.pauseCheck)
 	defer pauseTicker.Stop()
+	tick := time.NewTicker(d.tick)
+	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -138,6 +173,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 			d.heartbeat(ctx)
 			d.retryUnopened(ctx)
 			_, _ = d.store.ExpireStale(ctx, d.now())
+		case <-tick.C:
+			d.housekeeping(ctx)
 		case <-pauseTicker.C:
 			if err := ensure(); err != nil {
 				d.log.Warn("resubscribe failed", "err", err)
@@ -280,11 +317,19 @@ func (d *Daemon) handleAck(ctx context.Context, dl bus.Delivery) {
 		return
 	}
 	reason, rejected := e.Rejected()
-	_, err = d.store.Update(ctx, t.ID, func(t *threads.Thread) {
+	declineReason, declined := e.Declined()
+	t, err = d.store.Update(ctx, t.ID, func(t *threads.Thread) {
 		switch {
 		case rejected:
 			t.State = threads.StateRejected
 			t.LastPreview = "rejected: " + reason
+		case declined:
+			// The person on the other side read it and passed. The
+			// thread is over; the message copy below keeps the reason.
+			t.State = threads.StateDeclined
+			t.StagedKickoff = ""
+			t.SnoozedUntil = time.Time{}
+			t.LastPreview = e.Body
 		case t.State == threads.StateSent:
 			t.State = threads.StateDelivered
 		}
@@ -297,6 +342,14 @@ func (d *Daemon) handleAck(ctx context.Context, dl bus.Delivery) {
 		return
 	}
 	d.ack(ctx, dl)
+	if declined {
+		d.log.Info("peer declined", "thread", t.ID, "peer", dl.Sender)
+		body := t.Title
+		if declineReason != "" {
+			body = declineReason
+		}
+		d.announce(ctx, t, fmt.Sprintf("^%s declined your ask", dl.Sender), body)
+	}
 }
 
 // rateLimited reports whether accepting another ask from sender would
@@ -410,6 +463,10 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 	known := err == nil
 	if known && t.Peer != dl.Sender {
 		d.reject(ctx, dl, "not a party to this thread")
+		return
+	}
+	if known && t.State == threads.StateDeclined {
+		d.reject(ctx, dl, "thread declined")
 		return
 	}
 	mode, allowed := d.cfg.SenderMode(dl.Sender)
@@ -554,8 +611,8 @@ func (d *Daemon) answeredSince(ctx context.Context, e envelope.Envelope) bool {
 }
 
 // surface shows the result to the person: the deep link when a session
-// exists, and a notification either way. Both are best effort and never
-// affect the bus.
+// exists, and a notification either way (see announce for how the notify
+// mode shapes it). Both are best effort and never affect the bus.
 func (d *Daemon) surface(ctx context.Context, t threads.Thread, title, body string) {
 	if t.LocalSessionID != "" && t.StagedKickoff == "" && *d.cfg.Daemon.OpenApp {
 		if err := d.app.Open(ctx, t.LocalSessionID); err != nil {
@@ -564,15 +621,7 @@ func (d *Daemon) surface(ctx context.Context, t threads.Thread, title, body stri
 			_, _ = d.store.Update(ctx, t.ID, func(t *threads.Thread) { t.Opened = true })
 		}
 	}
-	if *d.cfg.Daemon.Notify {
-		hint := "wormhole inbox"
-		if t.LocalSessionID != "" {
-			hint = "thread " + t.ID
-		}
-		if err := d.app.Notify(ctx, title, strings.TrimSpace(body)+"\n"+hint); err != nil {
-			d.log.Debug("notification failed", "err", err)
-		}
-	}
+	d.announce(ctx, t, title, body)
 }
 
 // ContinueSession returns the session a follow-up on t should be appended

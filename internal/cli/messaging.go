@@ -21,7 +21,7 @@ const SessionEnv = "COPILOT_AGENT_SESSION_ID"
 // SkillVersion is the default for --skill-version and must equal the
 // version in skills/wormhole/SKILL.md; a test keeps them in step. Bump both
 // together whenever the skill's CLI contract changes.
-const SkillVersion = "0.2.0"
+const SkillVersion = "0.3.0"
 
 // sendResult is the JSON shape of ask, reply and send.
 type sendResult struct {
@@ -210,7 +210,7 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 		return fail(ExitNotFound, "thread %s is with ^%s, not ^%s", threadID, t.Peer, peer)
 	}
 	switch t.State {
-	case threads.StateClosed, threads.StateExpired, threads.StateRejected:
+	case threads.StateClosed, threads.StateExpired, threads.StateRejected, threads.StateDeclined:
 		return fail(ExitRefused, "thread %s is %s", threadID, t.State)
 	}
 	last, err := store.LastMessage(ctx, threadID)

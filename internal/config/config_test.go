@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, dir, name, content string, mode os.FileMode) string {
@@ -34,8 +35,8 @@ func TestExampleParses(t *testing.T) {
 	if cfg.Limits.PerSenderPerDay != 20 || cfg.Limits.PerDay != 50 || cfg.Limits.MaxHops != 6 {
 		t.Fatalf("%+v", cfg.Limits)
 	}
-	if !*cfg.Daemon.OpenApp || !*cfg.Daemon.Notify {
-		t.Fatal("daemon defaults")
+	if !*cfg.Daemon.OpenApp || cfg.Daemon.Notify != NotifyToast || cfg.Daemon.DigestEvery != 20*time.Minute || cfg.Daemon.SnoozeDefault != 2*time.Hour || len(cfg.Daemon.QuietHours) != 0 {
+		t.Fatalf("daemon defaults: %+v", cfg.Daemon)
 	}
 	// M0: an appended turn does not reach the agent the app runs in the
 	// asking session, so in-place replies are opt-in.
@@ -82,8 +83,66 @@ copilot:
 	}
 }
 
+func TestNotifyModes(t *testing.T) {
+	cases := map[string]NotifyMode{
+		"":                NotifyToast,
+		"notify: true":    NotifyToast,
+		"notify: false":   NotifyOff,
+		"notify: toast":   NotifyToast,
+		"notify: actions": NotifyActions,
+		"notify: digest":  NotifyDigest,
+		"notify: off":     NotifyOff,
+		"notify: \"off\"": NotifyOff,
+		"notify: yes":     NotifyToast,
+		"notify: no":      NotifyOff,
+	}
+	for src, want := range cases {
+		cfg, err := Parse([]byte("handle: alice\nbus: {kind: memory}\ndaemon: {" + src + "}\n"))
+		if err != nil {
+			t.Fatalf("%q: %v", src, err)
+		}
+		if cfg.Daemon.Notify != want {
+			t.Errorf("%q: notify = %q, want %q", src, cfg.Daemon.Notify, want)
+		}
+	}
+	if NotifyOff.Enabled() || !NotifyDigest.Enabled() {
+		t.Fatal("Enabled")
+	}
+}
+
+func TestQuietHours(t *testing.T) {
+	cfg, err := Parse([]byte("handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"18:00\", \"09:00\"]}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := func(h, m int) time.Time { return time.Date(2026, 10, 30, h, m, 0, 0, time.Local) }
+	for _, c := range []struct {
+		h, m int
+		in   bool
+	}{{17, 59, false}, {18, 0, true}, {23, 30, true}, {0, 0, true}, {8, 59, true}, {9, 0, false}, {12, 0, false}} {
+		if got := cfg.Daemon.InQuietHours(at(c.h, c.m)); got != c.in {
+			t.Errorf("%02d:%02d in quiet hours = %v, want %v", c.h, c.m, got, c.in)
+		}
+	}
+	day, _ := Parse([]byte("handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"12:00\", \"13:00\"]}\n"))
+	if !day.Daemon.InQuietHours(at(12, 30)) || day.Daemon.InQuietHours(at(13, 0)) || day.Daemon.InQuietHours(at(3, 0)) {
+		t.Fatal("same-day window")
+	}
+	none, _ := Parse([]byte("handle: alice\nbus: {kind: memory}\n"))
+	if none.Daemon.InQuietHours(at(3, 0)) {
+		t.Fatal("no window set")
+	}
+}
+
 func TestValidation(t *testing.T) {
 	bad := map[string]string{
+		"notify mode":   "handle: alice\nbus: {kind: memory}\ndaemon: {notify: loud}\n",
+		"notify list":   "handle: alice\nbus: {kind: memory}\ndaemon: {notify: [toast]}\n",
+		"digest short":  "handle: alice\nbus: {kind: memory}\ndaemon: {digest_every: 5s}\n",
+		"snooze short":  "handle: alice\nbus: {kind: memory}\ndaemon: {snooze_default: 10s}\n",
+		"quiet one":     "handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"18:00\"]}\n",
+		"quiet format":  "handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"6pm\", \"09:00\"]}\n",
+		"quiet same":    "handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"09:00\", \"09:00\"]}\n",
 		"handle":        "handle: Alice\nbus: {kind: memory}\n",
 		"self sender":   "handle: alice\nbus: {kind: memory}\nsenders: [alice]\n",
 		"dup sender":    "handle: alice\nbus: {kind: memory}\nsenders: [bob, bob]\n",

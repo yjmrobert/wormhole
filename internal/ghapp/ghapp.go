@@ -44,6 +44,39 @@ type Session struct {
 	ExtraArgs []string
 }
 
+// Notification is one desktop notification.
+type Notification struct {
+	Title string
+	Body  string
+	// Low marks it as not worth interrupting for (urgency low): it shows
+	// without popping over a focused window on most desktops.
+	Low bool
+	// ReplaceID, when non-zero, updates the bubble with that id in place
+	// instead of adding another one.
+	ReplaceID uint32
+	// Actions are buttons. With actions, Notify blocks until the bubble is
+	// closed or a button is pressed, and reports the pressed key.
+	Actions []Action
+}
+
+// Action is one notification button.
+type Action struct {
+	Key   string
+	Label string
+}
+
+// NotifyResult is what the notifier reported back.
+type NotifyResult struct {
+	// ID is the bubble id, when the notifier printed one; pass it as
+	// ReplaceID to update the same bubble.
+	ID uint32
+	// Action is the key of the pressed button, or empty.
+	Action string
+	// Plain is true when actions were asked for but the installed notifier
+	// could not offer them, so a plain toast was shown instead.
+	Plain bool
+}
+
 // App is what the daemon needs from the Copilot app.
 type App interface {
 	// Create starts a new session and runs the kickoff headless.
@@ -54,7 +87,10 @@ type App interface {
 	// Open shows the session in the app. Best effort.
 	Open(ctx context.Context, sessionID string) error
 	// Notify raises a desktop notification. Best effort.
-	Notify(ctx context.Context, title, body string) error
+	Notify(ctx context.Context, n Notification) (NotifyResult, error)
+	// ShowInbox starts argv detached, so the person can see what is
+	// waiting (a terminal running `wormhole inbox --watch`). Best effort.
+	ShowInbox(ctx context.Context, argv []string) error
 }
 
 // DeepLink returns the app URL for a session.
@@ -94,6 +130,9 @@ type Exec struct {
 	Opener   string // xdg-open
 	Notifier string // notify-send
 	Timeout  time.Duration
+	// ActionTimeout bounds how long a notification with buttons may wait
+	// for a press before it is given up on (the bubble itself stays).
+	ActionTimeout time.Duration
 }
 
 // NewExec returns an Exec with Linux defaults.
@@ -101,7 +140,7 @@ func NewExec(binary string) *Exec {
 	if binary == "" {
 		binary = "copilot"
 	}
-	return &Exec{Binary: binary, Opener: "xdg-open", Notifier: "notify-send", Timeout: 30 * time.Minute}
+	return &Exec{Binary: binary, Opener: "xdg-open", Notifier: "notify-send", Timeout: 30 * time.Minute, ActionTimeout: 10 * time.Minute}
 }
 
 // ErrNotInstalled is returned when a required binary is missing from PATH.
@@ -196,21 +235,126 @@ func (e *Exec) Open(ctx context.Context, sessionID string) error {
 	return e.run(ctx, "", e.Opener, DeepLink(sessionID))
 }
 
-// Notify runs: notify-send <title> <body>.
-func (e *Exec) Notify(ctx context.Context, title, body string) error {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+// Notify runs notify-send. A notification with buttons becomes
+//
+//	notify-send --app-name=wormhole --urgency=low --replace-id=<id> --print-id --action=k=Label ... <title> <body>
+//
+// which waits for the bubble to close and prints the pressed key. Those
+// flags need libnotify 0.7.9 or newer; when the installed notify-send
+// rejects them, the same title and body go out as a plain toast and the
+// result says so.
+func (e *Exec) Notify(ctx context.Context, n Notification) (NotifyResult, error) {
+	rich := len(n.Actions) > 0 || n.ReplaceID != 0
+	timeout := 15 * time.Second
+	if len(n.Actions) > 0 && e.ActionTimeout > 0 {
+		timeout = e.ActionTimeout
+	}
+	args := []string{"--app-name=wormhole"}
+	if n.Low {
+		args = append(args, "--urgency=low")
+	}
+	if rich {
+		if n.ReplaceID != 0 {
+			args = append(args, fmt.Sprintf("--replace-id=%d", n.ReplaceID))
+		}
+		args = append(args, "--print-id")
+		for _, a := range n.Actions {
+			args = append(args, "--action="+a.Key+"="+a.Label)
+		}
+	}
+	args = append(args, n.Title, n.Body)
+	rctx, cancel := context.WithTimeout(ctx, timeout)
+	out, err := e.output(rctx, e.Notifier, args...)
+	cancel()
+	if err == nil {
+		if !rich {
+			return NotifyResult{}, nil
+		}
+		return parseNotifyOutput(out), nil
+	}
+	if !rich || errors.Is(ctx.Err(), context.Canceled) {
+		return NotifyResult{}, err
+	}
+	// An old notify-send, or a notifier without actions: fall back.
+	plain := []string{"--app-name=wormhole"}
+	if n.Low {
+		plain = append(plain, "--urgency=low")
+	}
+	plain = append(plain, n.Title, n.Body)
+	pctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	return e.run(ctx, "", e.Notifier, "--app-name=wormhole", title, body)
+	if err := e.run(pctx, "", e.Notifier, plain...); err != nil {
+		return NotifyResult{}, err
+	}
+	return NotifyResult{Plain: true}, nil
+}
+
+// output runs a command and returns its stdout, with stderr kept apart.
+func (e *Exec) output(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if len(msg) > 400 {
+			msg = msg[:400] + "…"
+		}
+		return "", &RunError{Cmd: name, Err: err, Output: msg}
+	}
+	return stdout.String(), nil
+}
+
+// parseNotifyOutput reads what notify-send printed: the bubble id first
+// (--print-id), then the pressed action key, if any.
+func parseNotifyOutput(out string) NotifyResult {
+	var res NotifyResult
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if res.ID == 0 {
+			var id uint32
+			if _, err := fmt.Sscanf(line, "%d", &id); err == nil {
+				res.ID = id
+				continue
+			}
+		}
+		res.Action = line
+	}
+	return res
+}
+
+// ShowInbox starts argv and returns without waiting for it. The process is
+// reaped in the background.
+func (e *Exec) ShowInbox(ctx context.Context, argv []string) error {
+	if len(argv) == 0 {
+		return errors.New("empty show command")
+	}
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		return errors.New("no DISPLAY or WAYLAND_DISPLAY in the daemon's environment")
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	if err := cmd.Start(); err != nil {
+		return &RunError{Cmd: argv[0], Err: err}
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 // Call is one recorded App invocation.
 type Call struct {
-	Op        string // create, resume, open, notify
+	Op        string // create, resume, open, notify, show
 	Session   Session
 	SessionID string
 	Prompt    string
 	Title     string
 	Body      string
+	// Notification is the full request behind a notify call.
+	Notification Notification
+	// Argv is the command behind a show call.
+	Argv []string
 }
 
 // Recorder is an App for tests. It records calls and can be told to fail.
@@ -219,6 +363,9 @@ type Recorder struct {
 	Calls []Call
 	// Fail, when non-nil, decides whether an op fails.
 	Fail func(op string) error
+	// OnNotify, when non-nil, plays the notifier: it may block like a
+	// bubble with buttons does and returns what the person pressed.
+	OnNotify func(ctx context.Context, n Notification) NotifyResult
 }
 
 func (r *Recorder) record(c Call) error {
@@ -243,8 +390,18 @@ func (r *Recorder) Open(ctx context.Context, sessionID string) error {
 	return r.record(Call{Op: "open", SessionID: sessionID})
 }
 
-func (r *Recorder) Notify(ctx context.Context, title, body string) error {
-	return r.record(Call{Op: "notify", Title: title, Body: body})
+func (r *Recorder) Notify(ctx context.Context, n Notification) (NotifyResult, error) {
+	if err := r.record(Call{Op: "notify", Title: n.Title, Body: n.Body, Notification: n}); err != nil {
+		return NotifyResult{}, err
+	}
+	if r.OnNotify != nil {
+		return r.OnNotify(ctx, n), nil
+	}
+	return NotifyResult{ID: 1}, nil
+}
+
+func (r *Recorder) ShowInbox(ctx context.Context, argv []string) error {
+	return r.record(Call{Op: "show", Argv: argv})
 }
 
 // Ops returns the recorded operation names in order.

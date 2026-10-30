@@ -113,3 +113,64 @@ func TestExecArguments(t *testing.T) {
 		t.Fatalf("resume with extra args: %q", got)
 	}
 }
+
+// TestNotifyArguments runs Notify against a fake notify-send and checks the
+// flags, the parsed output and the fallback to a plain toast.
+func TestNotifyArguments(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "args.txt")
+	// The fake prints an id and a pressed key, like notify-send --print-id
+	// --action does, unless told to reject the rich flags.
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + out + "\nfor a in \"$@\"; do case \"$a\" in --action=*) if [ -e " + dir + "/old ]; then echo 'Unknown option --action' >&2; exit 1; fi;; esac; done\necho 42\necho later\n"
+	bin := filepath.Join(dir, "notify-send")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := NewExec("copilot")
+	e.Notifier = bin
+	res, err := e.Notify(context.Background(), Notification{Title: "^alice asked you something", Body: "hi", Low: true, ReplaceID: 7, Actions: []Action{{"show", "Show"}, {"later", "Later · 2h"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(out)
+	want := "--app-name=wormhole\n--urgency=low\n--replace-id=7\n--print-id\n--action=show=Show\n--action=later=Later · 2h\n^alice asked you something\nhi\n"
+	if string(got) != want {
+		t.Fatalf("args:\n%s\nwant:\n%s", got, want)
+	}
+	if res.ID != 42 || res.Action != "later" || res.Plain {
+		t.Fatalf("result = %+v", res)
+	}
+	// A plain toast carries none of the rich flags and ignores the output.
+	res, err = e.Notify(context.Background(), Notification{Title: "t", Body: "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(out)
+	if string(got) != "--app-name=wormhole\nt\nb\n" || res.ID != 0 || res.Action != "" {
+		t.Fatalf("plain: args %q result %+v", got, res)
+	}
+	// An old notify-send rejects --action: the toast still goes out.
+	if err := os.WriteFile(filepath.Join(dir, "old"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err = e.Notify(context.Background(), Notification{Title: "t", Body: "b", Low: true, Actions: []Action{{"show", "Show"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(out)
+	if string(got) != "--app-name=wormhole\n--urgency=low\nt\nb\n" || !res.Plain || res.Action != "" {
+		t.Fatalf("fallback: args %q result %+v", got, res)
+	}
+}
+
+func TestParseNotifyOutput(t *testing.T) {
+	if r := parseNotifyOutput("17\n"); r.ID != 17 || r.Action != "" {
+		t.Fatalf("%+v", r)
+	}
+	if r := parseNotifyOutput("17\ndecline\n"); r.ID != 17 || r.Action != "decline" {
+		t.Fatalf("%+v", r)
+	}
+	if r := parseNotifyOutput(""); r.ID != 0 || r.Action != "" {
+		t.Fatalf("%+v", r)
+	}
+}

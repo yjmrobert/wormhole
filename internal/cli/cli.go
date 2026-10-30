@@ -185,8 +185,10 @@ Usage:
   wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes] [--force-unsafe]
   wormhole reply <thread_id> "<text>" [--yes]
   wormhole send <user> --thread <id> "<text>" [--yes]
-  wormhole inbox
-  wormhole open <thread_id>
+  wormhole inbox [--watch] [--all]
+  wormhole open <thread_id> [--agent] [--yes] [--no-start]
+  wormhole snooze <thread_id> [<duration>|off]
+  wormhole decline <thread_id> ["<reason>"] [--yes]
   wormhole threads [--open] [--peer <user>]
   wormhole users
   wormhole daemon [--once] [--pause|--resume]
@@ -221,6 +223,10 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		err = a.inbox(ctx, &c, rest)
 	case "open":
 		err = a.open(ctx, &c, rest)
+	case "snooze":
+		err = a.snooze(ctx, &c, rest)
+	case "decline":
+		err = a.decline(ctx, &c, rest)
 	case "threads":
 		err = a.threads(ctx, &c, rest)
 	case "users":

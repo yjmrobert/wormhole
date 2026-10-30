@@ -77,6 +77,26 @@ func TestFollowUpAndAck(t *testing.T) {
 	if reason, ok := rej.Rejected(); !ok || reason != "sender not allowed" {
 		t.Fatalf("rejected ack not parsed: %q %v", reason, ok)
 	}
+	if _, ok := rej.Declined(); ok {
+		t.Fatal("rejection reported as a decline")
+	}
+	dec := NewAck(ask, bob, DeclineStatus("  ask in standup "), now)
+	if dec.Body != "declined: ask in standup" {
+		t.Fatal(dec.Body)
+	}
+	if reason, ok := dec.Declined(); !ok || reason != "ask in standup" {
+		t.Fatalf("declined ack not parsed: %q %v", reason, ok)
+	}
+	if _, ok := dec.Rejected(); ok {
+		t.Fatal("decline reported as a rejection")
+	}
+	bare := NewAck(ask, bob, DeclineStatus(""), now)
+	if reason, ok := bare.Declined(); !ok || reason != "" {
+		t.Fatalf("bare decline not parsed: %q %v", reason, ok)
+	}
+	if _, ok := ask.Declined(); ok {
+		t.Fatal("an ask is not a decline")
+	}
 }
 
 func TestValidateRejects(t *testing.T) {

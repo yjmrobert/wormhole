@@ -128,7 +128,7 @@ minutes.
 | | Inbox (default) | Auto (opt-in per sender) |
 | --- | --- | --- |
 | What the daemon does | Stores the kickoff locally, sends a notification | Runs `copilot -p` with the kickoff, opens the deep link |
-| Who presses go | The person, via `wormhole open`, which shows the text and asks first (`--yes` off a terminal), with their normal permissions | The recipient's agent, headless, restricted tool set |
+| Who presses go | The person, via `wormhole open`, which shows the text and asks first (`--yes` off a terminal), with their normal permissions; or `open --agent`, which runs it under the auto-mode profile once they have read it | The recipient's agent, headless, restricted tool set |
 | Tool exposure to inbound text | None until a person reads it | `--available-tools` safe set plus the permission flags in `copilot.extra_args` |
 | Config | `senders: [alice]` | `senders: [{handle: alice, mode: auto}]` |
 
@@ -147,6 +147,26 @@ not in the allowlist, but then always in inbox mode.
 
 Auto mode is downgraded to inbox mode, not refused, when a sender is over
 the per-sender or daily cap, or when `copilot.safe_tools` is empty.
+
+### Inbox verbs
+
+A staged message waits for one of five decisions, all implemented once in
+the CLI and reached from `wormhole inbox --watch` (one key each) and from
+the notification buttons: read (`open --no-start`), open with the person's
+tools (`open`), hand to the agent under the auto-mode profile (`open
+--agent`, refused while `safe_tools` is empty), later (`snooze`, a
+`snoozed_until` column the inbox listing hides and the daemon's
+housekeeping tick clears with one more notification) and decline. The
+first three run only after the full text was shown and a person said yes.
+
+Decline is the one verb that touches the wire, and it does so without a
+schema change: `wormhole decline` publishes a second `ack` on the thread
+with body `declined` or `declined: <reason>`, addressed to the peer. The
+asker's daemon moves the thread to `declined` (distinct from `rejected`,
+which a daemon issues on its own) and tells the person; the recipient's
+thread is `declined` too, with the staged text cleared. Either side's CLI
+refuses to continue a declined thread, and the recipient's daemon rejects
+a follow-up on one with `thread declined`.
 
 **What "safe tools" means after M0.** The agent answers by running
 `wormhole reply`, so an auto-mode tool set must include the shell tool;
@@ -190,6 +210,8 @@ the other subcommands. The tested profile is in "M0 results" below.
 - `ack` is published by the recipient's daemon once the thread row exists:
   body `delivered` or `rejected: <reason>`. A rejection is always addressed
   to the authenticated sender, even when the envelope's `from` was forged.
+  A person's `wormhole decline` later publishes a second ack on the same
+  thread, `declined` or `declined: <reason>`.
 
 ## Daemon behavior
 
@@ -225,7 +247,8 @@ On an inbound message the daemon, in order:
    reach an agent the app is running there, and the resume writes even
    while the app holds the session. Inbox mode stages the text and
    `wormhole open` makes the same choice later.
-6. For an ack: updates the outbound thread to `delivered` or `rejected`.
+6. For an ack: updates the outbound thread to `delivered`, `rejected` or
+   `declined`; a decline is announced to the person like any other event.
 
 Any failure before the ack is a nak with backoff (`daemon.nak_backoff`,
 30 s). On the fifth attempt the daemon publishes the envelope to
@@ -253,6 +276,35 @@ Context: repo <owner>/<repo> ref PR #123
 Replies use `[wormhole] Reply from ^bob on thread ... (hop 2,
 human_reviewed: false).` and name the asking session id so the person can
 find it.
+
+## Notifications
+
+`internal/ghapp` wraps `notify-send`; the daemon decides what to send
+according to `daemon.notify`:
+
+- `toast`: one notification per event, the original behavior.
+- `actions`: a staged message gets one low-urgency bubble for the whole
+  inbox (`--replace-id` keeps it to one bubble; `--print-id` learns the
+  id) with Show, Later and Decline buttons (`--action`). `notify-send`
+  waits for the press, so the daemon runs it in the background and acts
+  on the key: Show starts `daemon.show_command` detached, Later writes
+  `snoozed_until`, Decline publishes the receipt. When another message
+  arrives first, the waiting `notify-send` is cancelled and the new bubble
+  replaces it, so only the newest bubble's buttons are live. These flags
+  need libnotify 0.7.9 or newer; on failure the same text goes out as a
+  plain toast and the daemon logs that buttons are unavailable.
+- `digest`: events are counted and one summary goes out every
+  `digest_every` while something new has arrived.
+- `off`.
+
+`quiet_hours` holds every event in any mode and sends one summary within a
+housekeeping tick (30 s) of the window ending. The same tick wakes snoozed
+messages whose time has come: `snoozed_until` is cleared and the message is
+announced once more through the configured mode.
+
+Approval never happens in a notification: a two-line bubble cannot carry
+a 32 KB kickoff, and inbox mode promises the person read it. Show takes
+them to the terminal view; Later and Decline run nothing.
 
 ## Security, cost and safety
 

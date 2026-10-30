@@ -147,7 +147,8 @@ func NewFollowUp(t Type, prev Envelope, from Peer, to string, body string, now t
 }
 
 // NewAck builds the delivery receipt for an inbound message. status is
-// "delivered" or "rejected: <reason>".
+// "delivered", "rejected: <reason>", or (later, from a person) "declined"
+// or "declined: <reason>".
 func NewAck(inbound Envelope, from Peer, status string, now time.Time) Envelope {
 	id := inbound.ID
 	return Envelope{
@@ -175,6 +176,35 @@ func (e Envelope) Rejected() (reason string, ok bool) {
 		return strings.TrimSpace(rest), true
 	}
 	return "", false
+}
+
+// Declined reports whether an ack says the recipient read the message and
+// passed on it (`declined` or `declined: <reason>`). Unlike a rejection,
+// which the recipient's daemon issues on its own, a decline comes from the
+// person after the message was delivered.
+func (e Envelope) Declined() (reason string, ok bool) {
+	if e.Type != TypeAck {
+		return "", false
+	}
+	if e.Body == DeclinedStatus {
+		return "", true
+	}
+	if rest, found := strings.CutPrefix(e.Body, DeclinedStatus+":"); found {
+		return strings.TrimSpace(rest), true
+	}
+	return "", false
+}
+
+// DeclinedStatus is the ack body for a decline; a reason follows a colon.
+const DeclinedStatus = "declined"
+
+// DeclineStatus builds the ack body for a decline with an optional reason.
+func DeclineStatus(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return DeclinedStatus
+	}
+	return DeclinedStatus + ": " + reason
 }
 
 // Validation errors. Callers compare with errors.Is.
