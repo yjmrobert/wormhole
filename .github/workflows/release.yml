@@ -1,18 +1,20 @@
 name: release
-# Three ways to cut a release; all end in a v* tag and a GitHub Release:
-#   1. push a v* tag;
-#   2. dispatch this workflow with a version;
-#   3. create a branch named release/v<version> (for environments that can
-#      create branches but not tags). The workflow creates the tag from
-#      that branch head; the branch can be deleted afterwards.
+# A release is a v* tag on main; nothing else. Push the tag and this
+# workflow tests, builds and publishes it:
+#
+#   make release TAG=v0.4.0
+#
+# Where a tag cannot be pushed (a hosted session behind a git proxy, say),
+# dispatch this workflow on main with the version instead: it creates the
+# same tag through the Actions token and carries on as if it had been
+# pushed. Either way no branch is involved.
 on:
   push:
     tags: ["v*"]
-    branches: ["release/v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. v0.1.0 (creates the tag)"
+        description: "Version to release, e.g. v0.4.0 (creates the tag on main)"
         required: true
         type: string
 permissions:
@@ -24,24 +26,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: create tag
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
+      - name: tag main
+        if: github.event_name == 'workflow_dispatch'
         env:
-          INPUT_VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -eu
-          VERSION="${INPUT_VERSION:-${GITHUB_REF#refs/heads/release/}}"
-          case "$VERSION" in v[0-9]*) ;; *) echo "version must look like v0.1.0, got $VERSION"; exit 1;; esac
-          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
-            echo "tag $VERSION already exists; checking it out"
-            git fetch origin "refs/tags/$VERSION:refs/tags/$VERSION"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$VERSION" -m "$VERSION"
-            git push origin "refs/tags/$VERSION"
+          case "$VERSION" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "version must look like v0.4.0, got $VERSION"; exit 1;; esac
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "dispatch the release on main, not on $GITHUB_REF"; exit 1
           fi
-          git checkout -q "refs/tags/$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
+            echo "tag $VERSION already exists; re-run its release instead of dispatching"; exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "refs/tags/$VERSION"
+      - name: refuse a tag that is not on main
+        if: github.event_name == 'push'
+        run: |
+          set -eu
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "$GITHUB_REF_NAME points at a commit that is not on main; releases come from main only"; exit 1
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
