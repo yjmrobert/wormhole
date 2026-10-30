@@ -288,6 +288,100 @@ func roundTrip(t *testing.T, alice, bob *side) {
 	if code, _, _ := alice.cli(t, "", "ask", "Not/Valid", "x", "--yes"); code != cli.ExitNotFound {
 		t.Fatalf("bad handle code %d", code)
 	}
+
+	inboxVerbs(t, alice, bob)
+}
+
+// inboxVerbs is the second leg: bob asks alice, who runs inbox mode for
+// him, and alice works the inbox from the CLI: snooze, un-snooze, refuse
+// --agent without a profile, and decline. bob's thread ends as declined.
+func inboxVerbs(t *testing.T, alice, bob *side) {
+	bob.session = "bob-root-session"
+	code, out, stderr := bob.cli(t, "", "ask", "alice", "Can you look at the flaky e2e on main?", "--yes")
+	if code != 0 {
+		t.Fatalf("bob ask failed: %d %v %s", code, out, stderr)
+	}
+	threadID, _ := out["thread_id"].(string)
+	waitFor(t, "alice's staged ask", func() bool { return threadState(t, alice, threadID).StagedKickoff != "" })
+	waitFor(t, "bob's delivered receipt", func() bool { return threadState(t, bob, threadID).State == threads.StateDelivered })
+
+	// It is in alice's inbox, and nothing ran.
+	code, out, _ = alice.cli(t, "", "inbox")
+	items, _ := out["inbox"].([]any)
+	if code != 0 || len(items) != 1 || items[0].(map[string]any)["thread_id"] != threadID || items[0].(map[string]any)["kind"] != "ask" {
+		t.Fatalf("alice inbox = %v", out)
+	}
+
+	// Snooze hides it; --all still shows it; off brings it back.
+	code, out, stderr = alice.cli(t, "", "snooze", threadID, "3h")
+	if code != 0 || out["snoozed_until"] == "" {
+		t.Fatalf("snooze = %d %v %s", code, out, stderr)
+	}
+	code, out, _ = alice.cli(t, "", "inbox")
+	if items, _ := out["inbox"].([]any); code != 0 || len(items) != 0 {
+		t.Fatalf("snoozed item still listed: %v", out)
+	}
+	code, out, _ = alice.cli(t, "", "inbox", "--all")
+	items, _ = out["inbox"].([]any)
+	if code != 0 || len(items) != 1 || items[0].(map[string]any)["snoozed_until"] == nil {
+		t.Fatalf("inbox --all = %v", out)
+	}
+	if code, _, _ := alice.cli(t, "", "snooze", threadID, "soon"); code != cli.ExitUsage {
+		t.Fatalf("bad duration accepted: %d", code)
+	}
+	code, out, _ = alice.cli(t, "", "snooze", threadID, "off")
+	if code != 0 || out["snoozed_until"] != nil {
+		t.Fatalf("snooze off = %d %v", code, out)
+	}
+	code, out, _ = alice.cli(t, "", "inbox")
+	if items, _ := out["inbox"].([]any); code != 0 || len(items) != 1 {
+		t.Fatalf("inbox after snooze off = %v", out)
+	}
+
+	// alice has no auto-mode profile, so --agent is refused like auto mode.
+	before := len(alice.app.Snapshot())
+	if code, _, _ := alice.cli(t, "", "open", threadID, "--agent", "--yes"); code != cli.ExitRefused || len(alice.app.Snapshot()) != before {
+		t.Fatalf("open --agent without safe_tools: code %d", code)
+	}
+
+	// Off a terminal, decline needs --yes too; then it tells bob.
+	if code, _, _ := alice.cli(t, "", "decline", threadID, "busy"); code != cli.ExitRefused {
+		t.Fatalf("decline without --yes: %d", code)
+	}
+	code, out, stderr = alice.cli(t, "", "decline", threadID, "taking it to standup", "--yes")
+	if code != 0 || out["status"] != "declined: taking it to standup" || out["peer"] != "bob" {
+		t.Fatalf("decline = %d %v %s", code, out, stderr)
+	}
+	th := threadState(t, alice, threadID)
+	if th.State != threads.StateDeclined || th.StagedKickoff != "" {
+		t.Fatalf("alice thread after decline = %+v", th)
+	}
+	code, out, _ = alice.cli(t, "", "inbox")
+	if items, _ := out["inbox"].([]any); code != 0 || len(items) != 0 {
+		t.Fatalf("declined item still in inbox: %v", out)
+	}
+	if code, _, _ := alice.cli(t, "", "decline", threadID, "--yes"); code != cli.ExitRefused {
+		t.Fatalf("second decline: %d", code)
+	}
+	waitFor(t, "bob's declined thread", func() bool { return threadState(t, bob, threadID).State == threads.StateDeclined })
+	if th := threadState(t, bob, threadID); th.LastPreview != "declined: taking it to standup" {
+		t.Fatalf("bob thread = %+v", th)
+	}
+	waitFor(t, "bob's decline notification", func() bool {
+		for _, c := range bob.app.Snapshot() {
+			if c.Op == "notify" && c.Title == "^alice declined your ask" {
+				return true
+			}
+		}
+		return false
+	})
+	// Neither side can continue a declined thread.
+	if code, _, _ := bob.cli(t, "", "send", "alice", "--thread", threadID, "please?", "--yes"); code != cli.ExitRefused {
+		t.Fatalf("send on declined thread: %d", code)
+	}
+	if code, _, _ := alice.cli(t, "", "open", threadID, "--yes"); code != cli.ExitNotFound {
+		t.Fatalf("open on declined thread: %d", code)
+	}
 }
 
 const aliceYAML = `

@@ -47,7 +47,30 @@ daemon:
   registry_interval: 5m
   nak_backoff: 30s
   open_app: true
-  notify: true
+  # How inbound messages reach you while they wait in the inbox:
+  #   toast    one plain desktop notification per message
+  #   actions  one low-urgency bubble for the inbox, updated in place, with
+  #            Show, Later and Decline buttons (GNOME, KDE, dunst; others
+  #            fall back to a toast)
+  #   digest   nothing per message; one summary every digest_every
+  #   off      never
+  notify: toast
+  digest_every: 20m
+  # Local HH:MM window with no notifications; one summary when it ends.
+  # quiet_hours: ["18:00", "09:00"]
+  # How long Later (and a bare "wormhole snooze") hides a message.
+  snooze_default: 2h
+  # What the Show button runs. Default: the inbox page when inbox_ui is set,
+  # else $TERMINAL or x-terminal-emulator with "wormhole inbox --watch".
+  # A program and its arguments, not a shell line.
+  # show_command: ["kitty", "wormhole", "inbox", "--watch"]
+  # The inbox page: a browser tab served by the daemon on this machine
+  # only (loopback addresses only). The URL carries a per-start token;
+  # "wormhole inbox --ui" opens it. Empty disables it.
+  # inbox_ui: 127.0.0.1:7788
+  # A panel indicator with the waiting count and a menu (StatusNotifierItem:
+  # KDE Plasma, GNOME with the AppIndicator extension, Waybar).
+  tray: false
   # true appends a reply to the session that asked (copilot --resume).
   # Off by default: M0 showed the turn lands in the transcript but not in
   # the context of an agent the app is running in that session, and the

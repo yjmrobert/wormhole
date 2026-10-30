@@ -69,12 +69,12 @@ func TestThreadLifecycle(t *testing.T) {
 	if len(open) != 1 {
 		t.Fatalf("open threads: %d", len(open))
 	}
-	if _, err := s.Update(ctx, ask.ID, func(t *Thread) { t.State = StateClosed }); err != nil {
+	if _, err := s.Update(ctx, ask.ID, func(t *Thread) { t.State = StateDeclined }); err != nil {
 		t.Fatal(err)
 	}
 	open, _ = s.List(ctx, Filter{Open: true})
 	if len(open) != 0 {
-		t.Fatalf("closed thread still open")
+		t.Fatalf("declined thread still open")
 	}
 	if _, err := s.Get(ctx, envelope.NewID()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing thread: %v", err)
@@ -135,6 +135,85 @@ func TestSchemaVersion(t *testing.T) {
 	// A newer file is refused rather than misread.
 	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "newer") {
 		t.Fatalf("open newer schema: %v", err)
+	}
+}
+
+func TestMigrateFromV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "threads.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rebuild a version-1 file: no snoozed_until column.
+	for _, q := range []string{
+		`DROP INDEX threads_peer`, `DROP TABLE messages`, `DROP TABLE threads`,
+		strings.Replace(schema, "  snoozed_until TEXT NOT NULL DEFAULT '',\n", "", 1),
+		`PRAGMA user_version = 1`,
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	ask := envelope.NewAsk(envelope.Peer{User: "alice"}, "bob", "q", time.Now())
+	if _, err := s.db.Exec(`INSERT INTO threads (id, peer, direction, state, last_message_at, expires_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`,
+		ask.ID, "alice", "in", "pending", "2026-10-29T00:00:00Z", "2026-11-05T00:00:00Z", "2026-10-29T00:00:00Z", "2026-10-29T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var v int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != SchemaVersion {
+		t.Fatalf("user_version = %d, %v", v, err)
+	}
+	th, err := s.Get(context.Background(), ask.ID)
+	if err != nil || !th.SnoozedUntil.IsZero() {
+		t.Fatalf("%+v %v", th, err)
+	}
+}
+
+func TestSnooze(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	ask := envelope.NewAsk(envelope.Peer{User: "alice"}, "bob", "q", now)
+	th := Thread{ID: ask.ID, Peer: "alice", Direction: DirectionIn, State: StatePending, StagedKickoff: "k", ExpiresAt: ask.ExpiresAt}
+	if err := s.Put(ctx, th); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Get(ctx, ask.ID)
+	if !got.SnoozedUntil.IsZero() || got.Snoozed(now) {
+		t.Fatalf("fresh thread snoozed: %+v", got)
+	}
+	until := now.Add(2 * time.Hour)
+	if _, err := s.Update(ctx, ask.ID, func(t *Thread) { t.SnoozedUntil = until }); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Get(ctx, ask.ID)
+	if !got.SnoozedUntil.Equal(until) || !got.Snoozed(now) || got.Snoozed(until) {
+		t.Fatalf("%+v", got)
+	}
+	staged, _ := s.List(ctx, Filter{Staged: true})
+	if len(staged) != 1 {
+		t.Fatalf("staged = %d", len(staged))
+	}
+	early := now.Add(time.Hour)
+	if due, _ := s.List(ctx, Filter{SnoozeDue: &early}); len(due) != 0 {
+		t.Fatalf("snooze due early: %d", len(due))
+	}
+	late := now.Add(3 * time.Hour)
+	if due, _ := s.List(ctx, Filter{SnoozeDue: &late}); len(due) != 1 {
+		t.Fatalf("snooze not due: %d", len(due))
+	}
+	// Opening clears the staged kickoff, and with it the snooze's reach.
+	if _, err := s.Update(ctx, ask.ID, func(t *Thread) { t.StagedKickoff = ""; t.SnoozedUntil = time.Time{} }); err != nil {
+		t.Fatal(err)
+	}
+	if due, _ := s.List(ctx, Filter{SnoozeDue: &late}); len(due) != 0 {
+		t.Fatalf("opened thread still due: %d", len(due))
 	}
 }
 

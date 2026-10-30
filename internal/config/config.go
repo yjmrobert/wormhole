@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,45 @@ const (
 	DefaultCopilotBinary    = "copilot"
 	DefaultBusKind          = "nats"
 	DefaultNakBackoff       = 30 * time.Second
+	DefaultDigestEvery      = 20 * time.Minute
+	DefaultSnooze           = 2 * time.Hour
 )
+
+// NotifyMode says how the daemon tells the person about inbound messages.
+type NotifyMode string
+
+const (
+	// NotifyToast: one plain desktop notification per message.
+	NotifyToast NotifyMode = "toast"
+	// NotifyActions: one low-urgency bubble for the whole inbox, updated in
+	// place, with Show, Later and Decline buttons.
+	NotifyActions NotifyMode = "actions"
+	// NotifyDigest: nothing per message; one summary every digest_every
+	// while something is waiting.
+	NotifyDigest NotifyMode = "digest"
+	// NotifyOff: never notify.
+	NotifyOff NotifyMode = "off"
+)
+
+// UnmarshalYAML accepts the mode names and, for older configs, the booleans
+// `true` (toast) and `false` (off).
+func (m *NotifyMode) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.ScalarNode {
+		return fmt.Errorf("notify: want a mode name, got %s", n.ShortTag())
+	}
+	switch n.Value {
+	case "true", "True", "yes", "on":
+		*m = NotifyToast
+	case "false", "False", "no":
+		*m = NotifyOff
+	default:
+		*m = NotifyMode(n.Value)
+	}
+	return nil
+}
+
+// Enabled reports whether any notification is ever shown.
+func (m NotifyMode) Enabled() bool { return m != NotifyOff }
 
 // Config is the whole file.
 type Config struct {
@@ -118,7 +157,32 @@ type Daemon struct {
 	RegistryInterval time.Duration `yaml:"registry_interval"`
 	NakBackoff       time.Duration `yaml:"nak_backoff"`
 	OpenApp          *bool         `yaml:"open_app"`
-	Notify           *bool         `yaml:"notify"`
+	// Notify is how inbound messages are surfaced: toast (default),
+	// actions, digest or off. `true` and `false` still parse.
+	Notify NotifyMode `yaml:"notify"`
+	// DigestEvery is the summary interval in digest mode, and how soon a
+	// summary follows the end of quiet hours in every mode.
+	DigestEvery time.Duration `yaml:"digest_every"`
+	// QuietHours is a [start, end] pair of local HH:MM times during which
+	// nothing is shown; what arrived is summarized once the window ends.
+	QuietHours []string `yaml:"quiet_hours"`
+	// SnoozeDefault is how long the notification's Later button and a bare
+	// `wormhole snooze` hide a message.
+	SnoozeDefault time.Duration `yaml:"snooze_default"`
+	// ShowCommand runs when the person presses Show on a notification. It
+	// is a program and its arguments, never a shell string. Empty opens
+	// the inbox page when inbox_ui is set, else $TERMINAL or
+	// x-terminal-emulator with `wormhole inbox --watch`.
+	ShowCommand []string `yaml:"show_command"`
+	// InboxUI is the loopback address the daemon serves the inbox page on
+	// (127.0.0.1:7788). Empty disables it. Only loopback hosts are
+	// accepted: the page acts on the person's inbox and must not be
+	// reachable from another machine.
+	InboxUI string `yaml:"inbox_ui"`
+	// Tray shows a StatusNotifierItem in the desktop panel with the
+	// waiting count and a menu (KDE Plasma, GNOME with the AppIndicator
+	// extension, Waybar and others).
+	Tray bool `yaml:"tray"`
 	// ReplyInPlace appends a reply to the session that asked (or to the
 	// session already tied to the thread) instead of opening a new
 	// "Reply from" session. A new session is still used when the asking
@@ -173,6 +237,11 @@ func ThreadsDBPath() string { return filepath.Join(StateDir(), "threads.db") }
 // PauseFile is the local kill switch: while it exists the daemon does not
 // materialize anything.
 func PauseFile() string { return filepath.Join(StateDir(), "paused") }
+
+// InboxURLFile holds the inbox page's URL, token included, while the
+// daemon serves it (mode 600). `wormhole inbox --ui` and the notification's
+// Show button read it.
+func InboxURLFile() string { return filepath.Join(StateDir(), "inbox-ui.url") }
 
 // Load reads, validates and guards the config at path.
 func Load(path string) (*Config, error) {
@@ -241,8 +310,14 @@ func (c *Config) applyDefaults() {
 	if c.Daemon.OpenApp == nil {
 		c.Daemon.OpenApp = ptr(true)
 	}
-	if c.Daemon.Notify == nil {
-		c.Daemon.Notify = ptr(true)
+	if c.Daemon.Notify == "" {
+		c.Daemon.Notify = NotifyToast
+	}
+	if c.Daemon.DigestEvery == 0 {
+		c.Daemon.DigestEvery = DefaultDigestEvery
+	}
+	if c.Daemon.SnoozeDefault == 0 {
+		c.Daemon.SnoozeDefault = DefaultSnooze
 	}
 	if c.Daemon.ReplyInPlace == nil {
 		c.Daemon.ReplyInPlace = ptr(false)
@@ -298,6 +373,36 @@ func (c *Config) validate() error {
 	if c.Limits.PerSenderPerDay < 0 || c.Limits.PerDay < 0 || c.Limits.MaxHops < 1 {
 		return fmt.Errorf("%w: limits out of range", ErrInvalid)
 	}
+	switch c.Daemon.Notify {
+	case NotifyToast, NotifyActions, NotifyDigest, NotifyOff:
+	default:
+		return fmt.Errorf("%w: daemon.notify %q (want toast, actions, digest or off)", ErrInvalid, c.Daemon.Notify)
+	}
+	if c.Daemon.DigestEvery < time.Minute {
+		return fmt.Errorf("%w: daemon.digest_every %s is under a minute", ErrInvalid, c.Daemon.DigestEvery)
+	}
+	if c.Daemon.SnoozeDefault < time.Minute {
+		return fmt.Errorf("%w: daemon.snooze_default %s is under a minute", ErrInvalid, c.Daemon.SnoozeDefault)
+	}
+	if c.Daemon.InboxUI != "" {
+		if err := checkLoopback(c.Daemon.InboxUI); err != nil {
+			return fmt.Errorf("%w: daemon.inbox_ui %q: %v", ErrInvalid, c.Daemon.InboxUI, err)
+		}
+	}
+	switch len(c.Daemon.QuietHours) {
+	case 0:
+	case 2:
+		for _, h := range c.Daemon.QuietHours {
+			if _, err := time.Parse("15:04", h); err != nil {
+				return fmt.Errorf("%w: daemon.quiet_hours %q is not HH:MM", ErrInvalid, h)
+			}
+		}
+		if c.Daemon.QuietHours[0] == c.Daemon.QuietHours[1] {
+			return fmt.Errorf("%w: daemon.quiet_hours start and end are the same", ErrInvalid)
+		}
+	default:
+		return fmt.Errorf("%w: daemon.quiet_hours wants [start, end]", ErrInvalid)
+	}
 	for repo, dir := range c.Repos {
 		if !strings.Contains(repo, "/") {
 			return fmt.Errorf("%w: repos key %q must be owner/name", ErrInvalid, repo)
@@ -351,6 +456,45 @@ func Expand(p string) string {
 		}
 	}
 	return p
+}
+
+// checkLoopback accepts host:port only when host is a loopback name or
+// address, so that the inbox page never listens on a reachable interface.
+func checkLoopback(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.New("want host:port, such as 127.0.0.1:7788")
+	}
+	if port == "" {
+		return errors.New("missing port")
+	}
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("host must be 127.0.0.1, ::1 or localhost")
+	}
+	return nil
+}
+
+// InQuietHours reports whether now (local time) falls inside quiet_hours.
+// A window whose end is before its start spans midnight.
+func (d Daemon) InQuietHours(now time.Time) bool {
+	if len(d.QuietHours) != 2 {
+		return false
+	}
+	start, end := minuteOfDay(d.QuietHours[0]), minuteOfDay(d.QuietHours[1])
+	cur := now.Hour()*60 + now.Minute()
+	if start < end {
+		return cur >= start && cur < end
+	}
+	return cur >= start || cur < end
+}
+
+func minuteOfDay(hhmm string) int {
+	t, _ := time.Parse("15:04", hhmm)
+	return t.Hour()*60 + t.Minute()
 }
 
 // SenderMode returns the delivery mode for handle, or false if the sender
@@ -431,7 +575,30 @@ daemon:
   registry_interval: 5m
   nak_backoff: 30s
   open_app: true
-  notify: true
+  # How inbound messages reach you while they wait in the inbox:
+  #   toast    one plain desktop notification per message
+  #   actions  one low-urgency bubble for the inbox, updated in place, with
+  #            Show, Later and Decline buttons (GNOME, KDE, dunst; others
+  #            fall back to a toast)
+  #   digest   nothing per message; one summary every digest_every
+  #   off      never
+  notify: toast
+  digest_every: 20m
+  # Local HH:MM window with no notifications; one summary when it ends.
+  # quiet_hours: ["18:00", "09:00"]
+  # How long Later (and a bare "wormhole snooze") hides a message.
+  snooze_default: 2h
+  # What the Show button runs. Default: the inbox page when inbox_ui is set,
+  # else $TERMINAL or x-terminal-emulator with "wormhole inbox --watch".
+  # A program and its arguments, not a shell line.
+  # show_command: ["kitty", "wormhole", "inbox", "--watch"]
+  # The inbox page: a browser tab served by the daemon on this machine
+  # only (loopback addresses only). The URL carries a per-start token;
+  # "wormhole inbox --ui" opens it. Empty disables it.
+  # inbox_ui: 127.0.0.1:7788
+  # A panel indicator with the waiting count and a menu (StatusNotifierItem:
+  # KDE Plasma, GNOME with the AppIndicator extension, Waybar).
+  tray: false
   # true appends a reply to the session that asked (copilot --resume).
   # Off by default: M0 showed the turn lands in the transcript but not in
   # the context of an agent the app is running in that session, and the

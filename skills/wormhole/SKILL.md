@@ -1,6 +1,6 @@
 ---
 name: wormhole
-version: 0.2.0
+version: 0.3.0
 description: Send a question to a colleague's Copilot session on their machine with `^handle` syntax, and answer questions that arrive the same way. Triggers on a `^handle` token (`ask ^bob ...`, `tell ^bob ...`, `^bob can you ...`) or on a session whose first message starts with `[wormhole]`.
 ---
 
@@ -41,7 +41,7 @@ so always pass `--json` and read the result instead of the prose.
 5. **Send.** Run:
 
    ```
-   wormhole ask <handle> "<prompt>" --repo <owner/name> --context "<PR #n or issue>" --yes --json --skill-version 0.2.0
+   wormhole ask <handle> "<prompt>" --repo <owner/name> --context "<PR #n or issue>" --yes --json --skill-version 0.3.0
    ```
 
    Pass the prompt as one argument; use `-` as the prompt and feed stdin for
@@ -84,6 +84,32 @@ The first message begins with `[wormhole] Message from ^<handle> (thread
   answer to something this session (or this machine) asked. Use it to
   continue the work that asked; summarize it for the person and wait when
   the next step needs their judgment.
+
+## When the user asks about their inbox
+
+Messages from peers the user runs inbox mode for wait in `wormhole inbox`
+until a person decides. When the user asks what is waiting, or to deal
+with an item:
+
+1. Run `wormhole inbox --json` (add `--all` to include snoozed items) and
+   list each item: who, when, repo, preview. Each item carries the full
+   message in `text`.
+2. Before anything runs, show the **full** `text` of the item the user
+   picks (or run `wormhole open <thread_id> --no-start`). Inbox mode's
+   promise is that a person read it first; you are showing it on their
+   behalf, so never skip this.
+3. On the user's word, one command:
+   - open with their tools: `wormhole open <thread_id> --yes --json`
+   - hand it to the agent under the safe profile: `wormhole open <thread_id>
+     --agent --yes --json` (exit 3 means `copilot.safe_tools` is empty)
+   - later: `wormhole snooze <thread_id> 2h --json` (`off` brings it back)
+   - pass: `wormhole decline <thread_id> "<reason>" --yes --json`; the
+     asker sees `declined: <reason>`
+4. Report the result: the session id and that it is in the sidebar, or
+   the snooze time, or that the asker was told.
+
+Only do this when the user asks; the daemon cannot push new items into a
+session the app is running, so you will not see arrivals on your own.
 
 ## Never loop
 
