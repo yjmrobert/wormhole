@@ -231,6 +231,10 @@ func TestShowCommandDefault(t *testing.T) {
 	if got := strings.Join(f.bob.showCommand(), " "); got != "foot -e /opt/wormhole inbox --watch" {
 		t.Fatal(got)
 	}
+	f.bob.inboxURL = "http://127.0.0.1:7788/?t=abc"
+	if got := strings.Join(f.bob.showCommand(), " "); got != "xdg-open http://127.0.0.1:7788/?t=abc" {
+		t.Fatal(got)
+	}
 }
 
 func TestSnoozeWakesOnce(t *testing.T) {
@@ -326,7 +330,7 @@ func TestQuietHoursHoldThenSummarize(t *testing.T) {
 
 func TestShortDuration(t *testing.T) {
 	for d, want := range map[time.Duration]string{2 * time.Hour: "2h", 90 * time.Minute: "90m", 45 * time.Second: "45s"} {
-		if got := shortDuration(d); got != want {
+		if got := ShortDuration(d); got != want {
 			t.Errorf("%v: %q", d, got)
 		}
 	}

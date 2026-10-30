@@ -11,6 +11,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/envelope"
 	"github.com/yjmrobert/wormhole/internal/threads"
+	"github.com/yjmrobert/wormhole/internal/tray"
 )
 
 // newWatcher builds a view over a store with two staged asks, one of them
@@ -211,3 +212,20 @@ func TestClipAndWrap(t *testing.T) {
 		t.Fatalf("wrap = %q", got)
 	}
 }
+
+func TestTrayState(t *testing.T) {
+	w, _, asks := newWatcher(t)
+	s, err := trayState(context.Background(), w.store, w.app.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The snoozed ask is left out; the other carries its age and preview.
+	if len(s.Items) != 1 || s.Items[0].ID != asks[0].ID || s.Items[0].Peer != "alice" || s.Items[0].Age != "3m ago" || !strings.HasPrefix(s.Items[0].Preview, "Is the retry policy") {
+		t.Fatalf("state = %+v", s)
+	}
+	if trayFingerprint(s) == trayFingerprint(trayStateWith(s, true)) {
+		t.Fatal("paused must change the fingerprint")
+	}
+}
+
+func trayStateWith(s tray.State, paused bool) tray.State { s.Paused = paused; return s }

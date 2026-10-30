@@ -185,7 +185,7 @@ Usage:
   wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes] [--force-unsafe]
   wormhole reply <thread_id> "<text>" [--yes]
   wormhole send <user> --thread <id> "<text>" [--yes]
-  wormhole inbox [--watch] [--all]
+  wormhole inbox [--watch|--ui] [--all]
   wormhole open <thread_id> [--agent] [--yes] [--no-start]
   wormhole snooze <thread_id> [<duration>|off]
   wormhole decline <thread_id> ["<reason>"] [--yes]

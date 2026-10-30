@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,9 +170,19 @@ type Daemon struct {
 	// `wormhole snooze` hide a message.
 	SnoozeDefault time.Duration `yaml:"snooze_default"`
 	// ShowCommand runs when the person presses Show on a notification. It
-	// is a program and its arguments, never a shell string. Empty uses
-	// $TERMINAL or x-terminal-emulator with `wormhole inbox --watch`.
+	// is a program and its arguments, never a shell string. Empty opens
+	// the inbox page when inbox_ui is set, else $TERMINAL or
+	// x-terminal-emulator with `wormhole inbox --watch`.
 	ShowCommand []string `yaml:"show_command"`
+	// InboxUI is the loopback address the daemon serves the inbox page on
+	// (127.0.0.1:7788). Empty disables it. Only loopback hosts are
+	// accepted: the page acts on the person's inbox and must not be
+	// reachable from another machine.
+	InboxUI string `yaml:"inbox_ui"`
+	// Tray shows a StatusNotifierItem in the desktop panel with the
+	// waiting count and a menu (KDE Plasma, GNOME with the AppIndicator
+	// extension, Waybar and others).
+	Tray bool `yaml:"tray"`
 	// ReplyInPlace appends a reply to the session that asked (or to the
 	// session already tied to the thread) instead of opening a new
 	// "Reply from" session. A new session is still used when the asking
@@ -226,6 +237,11 @@ func ThreadsDBPath() string { return filepath.Join(StateDir(), "threads.db") }
 // PauseFile is the local kill switch: while it exists the daemon does not
 // materialize anything.
 func PauseFile() string { return filepath.Join(StateDir(), "paused") }
+
+// InboxURLFile holds the inbox page's URL, token included, while the
+// daemon serves it (mode 600). `wormhole inbox --ui` and the notification's
+// Show button read it.
+func InboxURLFile() string { return filepath.Join(StateDir(), "inbox-ui.url") }
 
 // Load reads, validates and guards the config at path.
 func Load(path string) (*Config, error) {
@@ -368,6 +384,11 @@ func (c *Config) validate() error {
 	if c.Daemon.SnoozeDefault < time.Minute {
 		return fmt.Errorf("%w: daemon.snooze_default %s is under a minute", ErrInvalid, c.Daemon.SnoozeDefault)
 	}
+	if c.Daemon.InboxUI != "" {
+		if err := checkLoopback(c.Daemon.InboxUI); err != nil {
+			return fmt.Errorf("%w: daemon.inbox_ui %q: %v", ErrInvalid, c.Daemon.InboxUI, err)
+		}
+	}
 	switch len(c.Daemon.QuietHours) {
 	case 0:
 	case 2:
@@ -435,6 +456,26 @@ func Expand(p string) string {
 		}
 	}
 	return p
+}
+
+// checkLoopback accepts host:port only when host is a loopback name or
+// address, so that the inbox page never listens on a reachable interface.
+func checkLoopback(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.New("want host:port, such as 127.0.0.1:7788")
+	}
+	if port == "" {
+		return errors.New("missing port")
+	}
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("host must be 127.0.0.1, ::1 or localhost")
+	}
+	return nil
 }
 
 // InQuietHours reports whether now (local time) falls inside quiet_hours.
@@ -547,9 +588,17 @@ daemon:
   # quiet_hours: ["18:00", "09:00"]
   # How long Later (and a bare "wormhole snooze") hides a message.
   snooze_default: 2h
-  # What the Show button runs. Default: $TERMINAL or x-terminal-emulator
-  # with "wormhole inbox --watch". A program and its arguments, not a shell line.
+  # What the Show button runs. Default: the inbox page when inbox_ui is set,
+  # else $TERMINAL or x-terminal-emulator with "wormhole inbox --watch".
+  # A program and its arguments, not a shell line.
   # show_command: ["kitty", "wormhole", "inbox", "--watch"]
+  # The inbox page: a browser tab served by the daemon on this machine
+  # only (loopback addresses only). The URL carries a per-start token;
+  # "wormhole inbox --ui" opens it. Empty disables it.
+  # inbox_ui: 127.0.0.1:7788
+  # A panel indicator with the waiting count and a menu (StatusNotifierItem:
+  # KDE Plasma, GNOME with the AppIndicator extension, Waybar).
+  tray: false
   # true appends a reply to the session that asked (copilot --resume).
   # Off by default: M0 showed the turn lands in the transcript but not in
   # the context of an agent the app is running in that session, and the

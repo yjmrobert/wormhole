@@ -45,6 +45,8 @@ type Daemon struct {
 	onHandled  func()
 	// exe is this binary, for the Show button's default command.
 	exe string
+	// inboxURL is the inbox page, when one is served.
+	inboxURL string
 
 	// Notification state; see notify.go.
 	mu           sync.Mutex
@@ -75,11 +77,14 @@ type Options struct {
 	// Exe is the wormhole binary the Show button's default command runs
 	// (default: this executable).
 	Exe string
+	// InboxURL is the inbox page's address when the daemon command serves
+	// one; the Show button then opens it instead of a terminal.
+	InboxURL string
 }
 
 // New wires a daemon.
 func New(o Options) *Daemon {
-	d := &Daemon{cfg: o.Config, bus: o.Bus, store: o.Store, app: o.App, log: o.Log, host: o.Host, now: o.Now, paused: o.Paused, pauseCheck: o.PauseCheck, tick: o.Tick, onHandled: o.OnHandled, exe: o.Exe}
+	d := &Daemon{cfg: o.Config, bus: o.Bus, store: o.Store, app: o.App, log: o.Log, host: o.Host, now: o.Now, paused: o.Paused, pauseCheck: o.PauseCheck, tick: o.Tick, onHandled: o.OnHandled, exe: o.Exe, inboxURL: o.InboxURL}
 	if d.pauseCheck == 0 {
 		d.pauseCheck = 2 * time.Second
 	}

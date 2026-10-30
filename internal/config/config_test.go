@@ -141,6 +141,10 @@ func TestValidation(t *testing.T) {
 		"digest short":  "handle: alice\nbus: {kind: memory}\ndaemon: {digest_every: 5s}\n",
 		"snooze short":  "handle: alice\nbus: {kind: memory}\ndaemon: {snooze_default: 10s}\n",
 		"quiet one":     "handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"18:00\"]}\n",
+		"ui all ifaces": "handle: alice\nbus: {kind: memory}\ndaemon: {inbox_ui: \"0.0.0.0:7788\"}\n",
+		"ui lan":        "handle: alice\nbus: {kind: memory}\ndaemon: {inbox_ui: \"192.168.1.5:7788\"}\n",
+		"ui host":       "handle: alice\nbus: {kind: memory}\ndaemon: {inbox_ui: \"bus.example.internal:7788\"}\n",
+		"ui no port":    "handle: alice\nbus: {kind: memory}\ndaemon: {inbox_ui: \"127.0.0.1\"}\n",
 		"quiet format":  "handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"6pm\", \"09:00\"]}\n",
 		"quiet same":    "handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"09:00\", \"09:00\"]}\n",
 		"handle":        "handle: Alice\nbus: {kind: memory}\n",
@@ -192,6 +196,18 @@ func TestLoadGuards(t *testing.T) {
 	leaky := write(t, dir, "leaky.yaml", strings.Replace(src, pw, inTree, 1), 0o600)
 	if _, err := Load(leaky); !errors.Is(err, ErrInGitTree) {
 		t.Fatalf("creds in git tree accepted: %v", err)
+	}
+}
+
+func TestInboxUIAddresses(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:7788", "localhost:7788", "[::1]:7788", "127.0.0.1:0"} {
+		if _, err := Parse([]byte("handle: alice\nbus: {kind: memory}\ndaemon: {inbox_ui: \"" + addr + "\", tray: true}\n")); err != nil {
+			t.Errorf("%s refused: %v", addr, err)
+		}
+	}
+	cfg, _ := Parse([]byte("handle: alice\nbus: {kind: memory}\n"))
+	if cfg.Daemon.InboxUI != "" || cfg.Daemon.Tray {
+		t.Fatal("inbox page and tray must be off by default")
 	}
 }
 

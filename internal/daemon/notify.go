@@ -90,7 +90,7 @@ func (d *Daemon) bubble(ctx context.Context, t threads.Thread, title, body strin
 		Low:   true,
 		Actions: []ghapp.Action{
 			{Key: ActionShow, Label: "Show"},
-			{Key: ActionLater, Label: "Later · " + shortDuration(d.cfg.Daemon.SnoozeDefault)},
+			{Key: ActionLater, Label: "Later · " + ShortDuration(d.cfg.Daemon.SnoozeDefault)},
 			{Key: ActionDecline, Label: "Decline"},
 		},
 	}
@@ -131,7 +131,7 @@ func (d *Daemon) act(ctx context.Context, threadID, action string) {
 	case "":
 		return
 	case ActionShow:
-		if err := d.app.ShowInbox(ctx, d.showCommand()); err != nil {
+		if err := d.ShowInbox(ctx); err != nil {
 			d.log.Warn("could not show the inbox", "err", err)
 		}
 	case ActionLater:
@@ -160,11 +160,20 @@ func (d *Daemon) act(ctx context.Context, threadID, action string) {
 	}
 }
 
-// showCommand is what the Show button runs: the configured command, else
-// a terminal with `wormhole inbox --watch`.
+// ShowInbox opens the inbox view for the person: the configured
+// show_command, else the inbox page when one is served, else a terminal
+// with `wormhole inbox --watch`. The notification's Show button and the
+// tray come here.
+func (d *Daemon) ShowInbox(ctx context.Context) error {
+	return d.app.ShowInbox(ctx, d.showCommand())
+}
+
 func (d *Daemon) showCommand() []string {
 	if len(d.cfg.Daemon.ShowCommand) > 0 {
 		return d.cfg.Daemon.ShowCommand
+	}
+	if d.inboxURL != "" {
+		return []string{"xdg-open", d.inboxURL}
 	}
 	term := os.Getenv("TERMINAL")
 	if term == "" {
@@ -263,8 +272,8 @@ func (d *Daemon) summary(ctx context.Context, opened int, replace uint32) {
 	}
 }
 
-// shortDuration formats 2h0m0s as 2h and 90m0s as 90m.
-func shortDuration(d time.Duration) string {
+// ShortDuration formats 2h0m0s as 2h and 90m0s as 90m.
+func ShortDuration(d time.Duration) string {
 	switch {
 	case d%time.Hour == 0:
 		return fmt.Sprintf("%dh", int(d.Hours()))

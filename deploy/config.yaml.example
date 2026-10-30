@@ -60,9 +60,17 @@ daemon:
   # quiet_hours: ["18:00", "09:00"]
   # How long Later (and a bare "wormhole snooze") hides a message.
   snooze_default: 2h
-  # What the Show button runs. Default: $TERMINAL or x-terminal-emulator
-  # with "wormhole inbox --watch". A program and its arguments, not a shell line.
+  # What the Show button runs. Default: the inbox page when inbox_ui is set,
+  # else $TERMINAL or x-terminal-emulator with "wormhole inbox --watch".
+  # A program and its arguments, not a shell line.
   # show_command: ["kitty", "wormhole", "inbox", "--watch"]
+  # The inbox page: a browser tab served by the daemon on this machine
+  # only (loopback addresses only). The URL carries a per-start token;
+  # "wormhole inbox --ui" opens it. Empty disables it.
+  # inbox_ui: 127.0.0.1:7788
+  # A panel indicator with the waiting count and a menu (StatusNotifierItem:
+  # KDE Plasma, GNOME with the AppIndicator extension, Waybar).
+  tray: false
   # true appends a reply to the session that asked (copilot --resume).
   # Off by default: M0 showed the turn lands in the transcript but not in
   # the context of an agent the app is running in that session, and the

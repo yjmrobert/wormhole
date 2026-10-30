@@ -40,9 +40,10 @@ alice's daemon ◀── bus ◀──wormhole reply── bob's session (agent 
   normal tools, `wormhole open --agent` hands it to his agent under the
   safe profile, `wormhole snooze` hides it for a while and `wormhole
   decline` tells Alice he passed. `wormhole inbox --watch` keeps the inbox
-  open in a terminal with one key per verb, and `daemon.notify` picks
-  between a toast per message, one bubble with Show, Later and Decline
-  buttons, or a digest.
+  open in a terminal with one key per verb, `daemon.inbox_ui` serves the
+  same inbox as a page on this machine only, `daemon.tray` puts the count
+  in the panel, and `daemon.notify` picks between a toast per message, one
+  bubble with Show, Later and Decline buttons, or a digest.
 - **Auto mode (opt-in per sender).** Bob's daemon runs the kickoff headless
   with a restricted tool set (`copilot.safe_tools` plus the CLI's
   permission flags in `copilot.extra_args`), so Bob's agent answers in
@@ -89,7 +90,7 @@ Then, in a Copilot session with the `wormhole` skill installed:
 wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes]
 wormhole reply <thread_id> "<text>"            # from inside a relayed session
 wormhole send <user> --thread <id> "<text>"    # free-form follow-up on an open thread
-wormhole inbox [--watch] [--all]               # staged inbound messages waiting for you; --watch keeps it open with one key per verb
+wormhole inbox [--watch|--ui] [--all]          # staged inbound messages waiting for you; --watch keeps it open in the terminal, --ui opens the page
 wormhole open <thread_id> [--agent] [--yes]    # read a staged message, confirm, run it in its session and show it; --agent uses the safe profile
 wormhole snooze <thread_id> [<duration>|off]   # hide a staged message until then; the daemon reminds you once
 wormhole decline <thread_id> ["<reason>"]      # pass on a staged message and tell the asker

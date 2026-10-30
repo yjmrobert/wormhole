@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,6 +21,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/daemon"
 	"github.com/yjmrobert/wormhole/internal/ghapp"
+	"github.com/yjmrobert/wormhole/internal/inboxui"
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
@@ -83,11 +86,64 @@ func (a *App) daemon(ctx context.Context, c *common, args []string) error {
 		opts.OnHandled = idle.touch
 		defer idle.stop()
 	}
+	// The inbox page shares the daemon's store, bus and app; its verbs are
+	// the daemon package's, so the daemon cannot start it itself.
+	var ui *inboxui.Server
+	var uiLn net.Listener
+	if cfg.Daemon.InboxUI != "" {
+		ui, err = inboxui.New(inboxui.Options{Config: cfg, Store: store, Bus: b, App: app, Me: a.me(cfg), Log: log.With("component", "inbox-ui"), Now: a.Now})
+		if err != nil {
+			return err
+		}
+		uiLn, err = inboxui.Listen(cfg.Daemon.InboxUI)
+		if err != nil {
+			return fail(ExitUnavailable, "inbox page: %v", err)
+		}
+		defer uiLn.Close()
+		opts.InboxURL = ui.URL(uiLn)
+		if err := writePrivate(config.InboxURLFile(), opts.InboxURL+"\n"); err != nil {
+			return err
+		}
+		defer os.Remove(config.InboxURLFile())
+		log.Info("inbox page", "addr", uiLn.Addr().String(), "url_file", config.InboxURLFile())
+	}
 	d := daemon.New(opts)
+	if ui != nil {
+		go func() {
+			if err := ui.Serve(ctx, uiLn); err != nil {
+				log.Warn("inbox page stopped", "err", err)
+			}
+		}()
+	}
+	if cfg.Daemon.Tray {
+		stop, err := a.startTray(ctx, cfg, store, d, log)
+		if err != nil {
+			log.Warn("tray indicator unavailable", "err", err)
+		} else {
+			defer stop()
+		}
+	}
 	if err := d.Run(ctx); err != nil {
 		return fail(ExitUnavailable, "%v", err)
 	}
 	return nil
+}
+
+// writePrivate writes a small state file readable by the user only.
+func writePrivate(path, content string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+// inboxURL reads the running daemon's inbox page address.
+func inboxURL() (string, error) {
+	b, err := os.ReadFile(config.InboxURLFile())
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 // idleTimer cancels when no activity has been seen for d.
@@ -189,6 +245,25 @@ func (a *App) doctor(ctx context.Context, c *common, args []string) error {
 			add(bin, false, "not on PATH", "optional; opening the app and notifications need it")
 		} else {
 			add(bin, true, "", "")
+		}
+	}
+	if cfg.Daemon.InboxUI != "" {
+		url, err := inboxURL()
+		if err != nil {
+			add("inbox page", false, "not running", "start the daemon; it serves the page on "+cfg.Daemon.InboxUI)
+		} else {
+			client := &http.Client{Timeout: 3 * time.Second}
+			resp, err := client.Get(strings.Replace(url, "/?t=", "/api/health?t=", 1))
+			switch {
+			case err != nil:
+				add("inbox page", false, err.Error(), "the daemon that wrote "+config.InboxURLFile()+" is gone; restart it")
+			case resp.StatusCode != http.StatusOK:
+				resp.Body.Close()
+				add("inbox page", false, resp.Status, "restart the daemon")
+			default:
+				resp.Body.Close()
+				add("inbox page", true, cfg.Daemon.InboxUI+" (wormhole inbox --ui)", "")
+			}
 		}
 	}
 	display := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""

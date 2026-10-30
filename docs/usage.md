@@ -55,7 +55,7 @@ read from stdin.
 | `wormhole ask <user> "<prompt>" [--repo o/r] [--context "PR #1"] [--session <id>] [--yes]` | Open a thread. Shows the envelope and asks for confirmation unless `--yes`. `--session` names the asking session when the shell does not. |
 | `wormhole reply <thread_id> "<text>" [--yes]` | Answer on a thread, from inside a relayed session. |
 | `wormhole send <user> --thread <id> "<text>" [--yes]` | Free-form follow-up on an open thread. |
-| `wormhole inbox [--watch] [--all]` | Staged inbound asks and replies waiting for you. Snoozed ones are hidden unless `--all`. `--watch` keeps the inbox open in the terminal with the selected message's full text and one key per verb. |
+| `wormhole inbox [--watch\|--ui] [--all]` | Staged inbound asks and replies waiting for you; `--json` includes each message's full text. Snoozed ones are hidden unless `--all`. `--watch` keeps the inbox open in the terminal with the selected message's full text and one key per verb. `--ui` opens the inbox page the daemon serves (`daemon.inbox_ui`). |
 | `wormhole open <thread_id> [--agent] [--yes] [--no-start]` | Run a staged message with your normal tools: shows it and asks first (off a terminal, `--yes` is required), appends it to the session the thread belongs to or starts a new one, then shows it in the app. Prints `copilot --resume=<id>` as a fallback. `--agent` runs it headless under `copilot.safe_tools` and `extra_args` instead, as auto mode would. `--no-start` only prints the message. |
 | `wormhole snooze <thread_id> [<duration>\|off]` | Hide a staged message from the inbox for a while (`2h`, `45m`, `1d`; default `daemon.snooze_default`). The daemon notifies once more when it comes due. `off` brings it back. |
 | `wormhole decline <thread_id> ["<reason>"] [--yes]` | Pass on a staged message without running it. The asker's thread shows `declined` with your reason. Asks first unless `--yes`. |
@@ -102,6 +102,31 @@ Every path that runs the message shows you the full text first and waits
 for a yes; that is what inbox mode means. Later and Decline run nothing,
 so a notification button is enough for them.
 
+### The inbox page
+
+Set `daemon.inbox_ui: 127.0.0.1:7788` and restart the daemon: it serves
+one page on that address, for this machine only (the daemon refuses any
+other host). `wormhole inbox --ui` opens it; the URL carries a token the
+daemon makes up at each start, so another page in your browser cannot
+drive your inbox. Keep the tab pinned next to the Copilot app: the tab
+title reads `(2) Wormhole inbox`, the list updates as messages arrive,
+and the selected message shows in full with the same four decisions as
+buttons. Open and Hand to my agent ask once more before they run; Later
+offers 1h, 2h, 4h, 1d or a typed length; Decline takes a reason. When the
+page is on, the notification's Show button opens it instead of a
+terminal.
+
+### The tray
+
+Set `daemon.tray: true` for a panel indicator: the icon switches to
+unread while something is waiting, the tooltip and title carry the
+count, and its menu lists the waiting messages (click one to open the
+inbox view), has **Open inbox**, and **Pause daemon** / **Resume daemon**
+for the local kill switch. It speaks the StatusNotifierItem protocol over
+the session bus, so it shows up in KDE Plasma, Waybar, and GNOME with the
+AppIndicator extension installed; without a tray host it waits quietly
+and appears when one starts. No extra packages: it is in the binary.
+
 ### Notifications
 
 `daemon.notify` picks how the daemon tells you:
@@ -121,6 +146,15 @@ so a notification button is enough for them.
 `daemon.quiet_hours: ["18:00", "09:00"]` holds everything inside the
 window in any mode and sends one summary when it ends. Sessions that auto
 mode opened in the app are counted in the summary too.
+
+### From a Copilot session
+
+With the skill installed, "anything in my wormhole inbox?" makes the
+agent list what is waiting (`wormhole inbox --json` carries each message's
+full text), show you the one you pick, and run the verb you name: open,
+hand to the agent, snooze, decline. The daemon cannot push arrivals into a
+session the app is running, so this works when you ask, not on its own;
+the notification, the page or the tray is the bell.
 
 ## Kill switches
 

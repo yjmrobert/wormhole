@@ -2,16 +2,15 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/daemon"
 	"github.com/yjmrobert/wormhole/internal/envelope"
-	"github.com/yjmrobert/wormhole/internal/ghapp"
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
@@ -25,6 +24,9 @@ type inboxItem struct {
 	Received     string `json:"received"`
 	Repo         string `json:"repo,omitempty"`
 	SnoozedUntil string `json:"snoozed_until,omitempty"`
+	// Text is the full staged message, so an agent triaging the inbox can
+	// show it to the person without a second command.
+	Text string `json:"text"`
 }
 
 func inboxItemOf(t threads.Thread) inboxItem {
@@ -32,7 +34,7 @@ func inboxItemOf(t threads.Thread) inboxItem {
 	if t.Direction == threads.DirectionOut {
 		kind = "reply"
 	}
-	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format("2006-01-02T15:04:05Z"), Repo: t.Repo}
+	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format("2006-01-02T15:04:05Z"), Repo: t.Repo, Text: t.StagedKickoff}
 	if !t.SnoozedUntil.IsZero() {
 		it.SnoozedUntil = t.SnoozedUntil.UTC().Format("2006-01-02T15:04:05Z")
 	}
@@ -61,12 +63,19 @@ func (a *App) inbox(ctx context.Context, c *common, args []string) error {
 	fs := flag.NewFlagSet("inbox", flag.ContinueOnError)
 	c.bind(fs)
 	watch := fs.Bool("watch", false, "keep the inbox open in the terminal and act on messages with one key each")
+	ui := fs.Bool("ui", false, "open the inbox page the daemon serves (daemon.inbox_ui) in the browser")
 	all := fs.Bool("all", false, "include snoozed messages")
 	if _, err := a.parse(fs, args); err != nil {
 		return err
 	}
+	if *watch && *ui {
+		return fail(ExitUsage, "--watch and --ui are exclusive")
+	}
 	if *watch {
 		return a.watch(ctx, c)
+	}
+	if *ui {
+		return a.inboxUI(ctx, c)
 	}
 	store, err := a.OpenStore()
 	if err != nil {
@@ -101,16 +110,42 @@ func (a *App) inbox(ctx context.Context, c *common, args []string) error {
 	return nil
 }
 
+// openResult is daemon.OpenResult with the ok field every command prints.
+// inboxUI opens the inbox page a running daemon serves.
+func (a *App) inboxUI(ctx context.Context, c *common) error {
+	cfg, err := a.loadConfig(c)
+	if err != nil {
+		return err
+	}
+	url, err := inboxURL()
+	if err != nil {
+		if cfg.Daemon.InboxUI == "" {
+			return fail(ExitUnavailable, "the inbox page is off; set daemon.inbox_ui (127.0.0.1:7788) and restart the daemon")
+		}
+		return fail(ExitUnavailable, "the inbox page is not running (no %s); start the daemon", config.InboxURLFile())
+	}
+	opened := false
+	var openErr string
+	if !c.json {
+		if err := a.NewGHApp(cfg).ShowInbox(ctx, []string{"xdg-open", url}); err != nil {
+			openErr = err.Error()
+		} else {
+			opened = true
+		}
+	}
+	a.emit(c, map[string]any{"ok": true, "url": url, "opened": opened}, func(w io.Writer) {
+		if opened {
+			fmt.Fprintf(w, "opened %s\n", url)
+		} else {
+			fmt.Fprintf(w, "open this in your browser: %s\n(%s)\n", url, openErr)
+		}
+	})
+	return nil
+}
+
 type openResult struct {
-	OK        bool   `json:"ok"`
-	ThreadID  string `json:"thread_id"`
-	SessionID string `json:"session_id"`
-	Started   bool   `json:"started"`
-	Resumed   bool   `json:"resumed"`
-	Agent     bool   `json:"agent,omitempty"`
-	Opened    bool   `json:"opened"`
-	Fallback  string `json:"fallback"`
-	OpenError string `json:"open_error,omitempty"`
+	OK bool `json:"ok"`
+	daemon.OpenResult
 }
 
 // open runs the staged message for a thread if there is one (appending it
@@ -205,85 +240,35 @@ func openPrompt(t threads.Thread, agent bool) string {
 // checkAgentProfile refuses --agent when no auto-mode profile is set, the
 // same way the daemon refuses auto mode.
 func (a *App) checkAgentProfile(cfg *config.Config, agent bool) error {
-	if agent && len(cfg.Copilot.SafeTools) == 0 {
-		return fail(ExitRefused, "copilot.safe_tools is empty; --agent needs the auto-mode profile (see docs/design.md, M0 results)")
+	if err := daemon.CheckAgentProfile(cfg, agent); err != nil {
+		return fail(ExitRefused, "%v", err)
 	}
 	return nil
 }
 
 // openThread runs t's staged message, if any, and shows the thread's
-// session in the app. It is the one place a staged message turns into a
-// Copilot run: `wormhole open` and `wormhole inbox --watch` both come
-// here after the person has read the text and confirmed. With agent, the
-// run is restricted like auto mode (safe_tools plus extra_args).
+// session in the app; see daemon.OpenStaged. `wormhole open` and `wormhole
+// inbox --watch` both come here after the person has read the text and
+// confirmed.
 func (a *App) openThread(ctx context.Context, c *common, cfg *config.Config, store *threads.Store, t threads.Thread, agent bool) (openResult, error) {
-	app := a.NewGHApp(cfg)
-	res := openResult{OK: true, ThreadID: t.ID, Agent: agent}
-	if t.StagedKickoff != "" {
-		if err := a.checkAgentProfile(cfg, agent); err != nil {
-			return res, err
-		}
-		workdir := t.Workdir
-		if workdir == "" {
-			workdir = cfg.WorkdirFor(t.Repo)
-		}
-		var tools []string
-		if agent {
-			tools = cfg.Copilot.SafeTools
-		}
-		sessionID := daemon.ContinueSession(cfg, t)
-		if sessionID != "" {
-			if !c.json {
-				fmt.Fprintf(a.Stderr, "appending the message to session %s (it runs headless first; this can take a minute)\n", sessionID)
-			}
-			if err := app.Resume(ctx, ghapp.Session{ID: sessionID, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model, AvailableTools: tools, ExtraArgs: cfg.Copilot.ExtraArgs}); err != nil {
-				fmt.Fprintf(a.Stderr, "could not resume session %s (%v); starting a new one\n", sessionID, err)
-				sessionID = ""
-			} else {
-				res.Resumed = true
-			}
-		}
-		if sessionID == "" {
-			sessionID = ghapp.NewSessionID()
-			name := ghapp.SessionName(t.Peer, t.Title)
-			if t.Direction == threads.DirectionOut {
-				name = fmt.Sprintf("Reply from ^%s", t.Peer)
-			}
-			if !c.json {
-				fmt.Fprintf(a.Stderr, "starting session %s in %s (the kickoff runs headless first; this can take a minute)\n", sessionID, workdir)
-			}
-			err := app.Create(ctx, ghapp.Session{ID: sessionID, Name: name, Kickoff: t.StagedKickoff, Workdir: workdir, Model: cfg.Copilot.Model, AvailableTools: tools, ExtraArgs: cfg.Copilot.ExtraArgs})
-			if err != nil {
-				return res, fail(ExitUnavailable, "start session: %v", err)
-			}
-		}
-		res.Started = true
-		var err error
-		t, err = store.Update(ctx, t.ID, func(t *threads.Thread) {
-			t.LocalSessionID = sessionID
-			t.StagedKickoff = ""
-			t.SnoozedUntil = time.Time{}
-			t.Workdir = workdir
-			if agent {
-				t.Mode = threads.ModeAuto
-			}
-			if t.State == threads.StatePending {
-				t.State = threads.StateDelivered
-			}
-		})
-		if err != nil {
-			return res, err
-		}
+	var progress io.Writer
+	if !c.json {
+		progress = a.Stderr
 	}
-	res.SessionID = t.LocalSessionID
-	res.Fallback = ghapp.ResumeCommand(t.LocalSessionID)
-	if err := app.Open(ctx, t.LocalSessionID); err != nil {
-		res.OpenError = err.Error()
-	} else {
-		res.Opened = true
-		_, _ = store.Update(ctx, t.ID, func(t *threads.Thread) { t.Opened = true })
+	res, _, err := daemon.OpenStaged(ctx, cfg, store, a.NewGHApp(cfg), t, agent, progress)
+	out := openResult{OK: err == nil, OpenResult: res}
+	switch {
+	case err == nil:
+	case errors.Is(err, daemon.ErrNoAgentProfile):
+		return out, fail(ExitRefused, "%v", err)
+	case errors.Is(err, daemon.ErrNothingToOpen):
+		return out, fail(ExitNotFound, "%v", err)
+	case errors.Is(err, daemon.ErrStartSession):
+		return out, fail(ExitUnavailable, "%v", err)
+	default:
+		return out, err
 	}
-	return res, nil
+	return out, nil
 }
 
 func (a *App) threads(ctx context.Context, c *common, args []string) error {

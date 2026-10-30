@@ -92,10 +92,12 @@ until a person decides. When the user asks what is waiting, or to deal
 with an item:
 
 1. Run `wormhole inbox --json` (add `--all` to include snoozed items) and
-   list each item: who, when, repo, preview.
-2. Before anything runs, show the **full** text: `wormhole open <thread_id>
-   --no-start`. Inbox mode's promise is that a person read it first; you
-   are showing it on their behalf, so never skip this.
+   list each item: who, when, repo, preview. Each item carries the full
+   message in `text`.
+2. Before anything runs, show the **full** `text` of the item the user
+   picks (or run `wormhole open <thread_id> --no-start`). Inbox mode's
+   promise is that a person read it first; you are showing it on their
+   behalf, so never skip this.
 3. On the user's word, one command:
    - open with their tools: `wormhole open <thread_id> --yes --json`
    - hand it to the agent under the safe profile: `wormhole open <thread_id>

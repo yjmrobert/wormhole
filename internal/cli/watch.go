@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/yjmrobert/wormhole/internal/config"
+	"github.com/yjmrobert/wormhole/internal/daemon"
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
@@ -250,7 +251,7 @@ func (w *watcher) snoozeSelected(ctx context.Context) {
 	if !ok {
 		return
 	}
-	def := shortDuration(w.cfg.Daemon.SnoozeDefault)
+	def := daemon.ShortDuration(w.cfg.Daemon.SnoozeDefault)
 	line, ok := w.readLine(fmt.Sprintf("snooze ^%s for [%s, or off]: ", t.Peer, def))
 	if !ok {
 		w.status = "snooze cancelled"
@@ -508,16 +509,4 @@ func wrapLines(text string, cols int) []string {
 		out = append(out, string(r))
 	}
 	return out
-}
-
-// shortDuration formats 2h0m0s as 2h and 90m0s as 90m.
-func shortDuration(d time.Duration) string {
-	switch {
-	case d%time.Hour == 0:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	case d%time.Minute == 0:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	default:
-		return d.String()
-	}
 }

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 
@@ -33,23 +32,11 @@ func (a *App) stagedThread(ctx context.Context, store *threads.Store, id string)
 	return t, nil
 }
 
-// parseSnooze reads a snooze length: a Go duration (2h, 45m), days (1d),
-// or off to clear it.
+// parseSnooze is daemon.ParseSnooze with the CLI's usage exit code.
 func parseSnooze(s string, def time.Duration) (time.Duration, error) {
-	switch s {
-	case "":
-		return def, nil
-	case "off", "0":
-		return 0, nil
-	}
-	if strings.HasSuffix(s, "d") {
-		if n, err := strconv.Atoi(strings.TrimSuffix(s, "d")); err == nil && n > 0 {
-			return time.Duration(n) * 24 * time.Hour, nil
-		}
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil || d <= 0 {
-		return 0, fail(ExitUsage, "%q is not a duration (try 2h, 45m, 1d, or off)", s)
+	d, err := daemon.ParseSnooze(s, def)
+	if err != nil {
+		return 0, fail(ExitUsage, "%v", err)
 	}
 	return d, nil
 }
@@ -109,11 +96,11 @@ func (a *App) snooze(ctx context.Context, c *common, args []string) error {
 }
 
 func (a *App) snoozeThread(ctx context.Context, store *threads.Store, t threads.Thread, d time.Duration) (snoozeResult, error) {
-	var until time.Time
-	if d > 0 {
-		until = a.Now().Add(d).Truncate(time.Second)
-	}
-	if _, err := store.Update(ctx, t.ID, func(u *threads.Thread) { u.SnoozedUntil = until }); err != nil {
+	until, err := daemon.Snooze(ctx, store, t, a.Now(), d)
+	if err != nil {
+		if errors.Is(err, daemon.ErrNothingStaged) {
+			return snoozeResult{}, fail(ExitRefused, "%v", err)
+		}
 		return snoozeResult{}, err
 	}
 	res := snoozeResult{OK: true, ThreadID: t.ID}

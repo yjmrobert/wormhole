@@ -61,6 +61,8 @@ internal/envelope   schema v1, validation, ULIDs, secret scan
 internal/threads    SQLite thread map and message copies
 internal/config     loading, validation, leak guards
 internal/ghapp      copilot -p wrapper, deep link, notifications
+internal/inboxui    the inbox page: loopback HTTP, SSE, the verbs as buttons
+internal/tray       StatusNotifierItem over D-Bus: count, menu, kill switch
 skills/wormhole     SKILL.md
 deploy/             nats-server.conf, accounts.conf, systemd, compose
 test/e2e            two daemons, two bus users, one machine, both adapters
@@ -304,7 +306,39 @@ announced once more through the configured mode.
 
 Approval never happens in a notification: a two-line bubble cannot carry
 a 32 KB kickoff, and inbox mode promises the person read it. Show takes
-them to the terminal view; Later and Decline run nothing.
+them to the inbox page or the terminal view; Later and Decline run
+nothing.
+
+### The inbox page
+
+`internal/inboxui` serves one page from embedded assets when
+`daemon.inbox_ui` is set. The daemon command, not the daemon package,
+starts it, because the page calls the daemon package's verbs
+(`OpenStaged`, `Snooze`, `Decline`) and Go forbids the cycle. Listening
+is refused on anything but a loopback host, every request must come from
+a loopback address and carry a token the server makes up at start (the
+`t` query parameter or the `X-Wormhole-Token` header; the stylesheet and
+script are the only exceptions), and the page sends no request anywhere
+else (`default-src 'none'`). The token sits in a mode-600 file in the
+state directory for `wormhole inbox --ui` and the Show button. Open pages
+hold a server-sent-events stream; a poller fingerprints the staged
+threads once a second and pushes the view when it changes, so an action
+from the CLI, the terminal view or a notification button shows up in the
+tab. An Open request runs the kickoff with a context detached from the
+request, so closing the tab mid-run cannot leave a half-recorded session.
+
+### The tray
+
+`internal/tray` is a StatusNotifierItem in pure Go over the session bus
+(godbus; no cgo, no GTK). It exports the item and a `com.canonical.dbusmenu`
+menu, registers with `org.kde.StatusNotifierWatcher`, and re-registers
+whenever a watcher appears or restarts, so starting the panel after the
+daemon is fine. The daemon command feeds it from the thread database once
+a second: waiting (not snoozed) messages newest first, and the kill
+switch. Clicks run the same Show as the notification; the pause entry
+writes the pause file the daemon already polls. GNOME needs the
+AppIndicator extension to show any such item; that is a desktop fact, not
+something the binary can change.
 
 ## Security, cost and safety
 
