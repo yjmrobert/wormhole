@@ -69,7 +69,7 @@
     hits.sort(function (a, b) { return b.score - a.score || a.page.number - b.page.number; });
     hits = hits.slice(0, 6);
     if (!hits.length) {
-      panel.innerHTML = '<p class="search-empty">No sheet mentions “' + escapeHTML(q) + '”.</p>';
+      panel.innerHTML = '<p class="search-empty">No page mentions “' + escapeHTML(q) + '”.</p>';
       panel.hidden = false;
       return;
     }

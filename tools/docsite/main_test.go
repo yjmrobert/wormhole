@@ -35,7 +35,7 @@ func TestBuildSite(t *testing.T) {
 		if regexp.MustCompile(`href="[^":]*\.md(#[^"]*)?"`).MatchString(html) {
 			t.Errorf("%s: a Markdown link was not rewritten", s.Source)
 		}
-		// Internal links must point at sheets that exist.
+		// Internal links must point at pages that exist.
 		for _, m := range regexp.MustCompile(`href="/wormhole/([a-z0-9-]*)/?(#[^"]*)?"`).FindAllStringSubmatch(html, -1) {
 			slug := m[1]
 			if slug == "assets" || slug == "search.json" {
@@ -46,7 +46,7 @@ func TestBuildSite(t *testing.T) {
 			}
 		}
 	}
-	for _, f := range []string{"404.html", ".nojekyll", "search.json", "assets/style.css", "assets/site.js", "assets/fonts.css", "assets/favicon.svg", "assets/fonts/barlow-400-latin.woff2", "assets/fonts/OFL-Barlow.txt"} {
+	for _, f := range []string{"404.html", ".nojekyll", "search.json", "assets/style.css", "assets/site.js", "assets/fonts.css", "assets/favicon.svg", "assets/fonts/monoton-400-normal-latin.woff2", "assets/fonts/chakra-petch-700-normal-latin.woff2", "assets/fonts/exo-2-400-normal-latin.woff2", "assets/fonts/OFL-Monoton.txt", "assets/fonts/OFL-ChakraPetch.txt", "assets/fonts/OFL-Exo2.txt"} {
 		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
 			t.Errorf("missing %s", f)
 		}
@@ -64,7 +64,13 @@ func TestBuildSite(t *testing.T) {
 	}
 	home, _ := os.ReadFile(filepath.Join(out, "index.html"))
 	if !strings.Contains(string(home), `class="drawing drawing-landscape"`) || !strings.Contains(string(home), `class="lede"`) {
-		t.Error("home sheet lacks the schematic or the lede")
+		t.Error("home page lacks the schematic or the lede")
+	}
+	if !strings.Contains(string(home), `class="hero"`) || !strings.Contains(string(home), `class="hero-mesh"`) || strings.Count(string(home), `<h1 class="title">`) != 1 {
+		t.Error("home page lacks the hero, or has more than one title")
+	}
+	if strings.Contains(string(home), "Drawing index") || strings.Contains(string(home), "On this sheet") {
+		t.Error("the drafting vocabulary is still in the template")
 	}
 	skill, _ := os.ReadFile(filepath.Join(out, "skill", "index.html"))
 	if strings.Contains(string(skill), "user-invocable") {
