@@ -37,7 +37,7 @@ Documentation lives as Markdown under `docs/` and is the source of truth; the si
 
 ## Brand Commitments
 
-Name: Wormhole. The maintainer pinned the visual world for the docs: modern, "spacey", with an engineering-blueprint vibe. Light theme by default with a dark theme available. Ambition: "go big" on signature visuals (animated star field, scroll-driven drafting lines, live SVG schematics of the message flow) while the reading column stays legible. No existing logo or wordmark; one may be drawn for the site.
+Name: Wormhole. The maintainer pinned the visual world for the docs in October 2026: synthwave, a 1984 night in cyan, magenta and violet on deep navy, with physics pictures of the wormhole (a floor bent into a well under a striped wormhole on the horizon). Dark is the native theme; a light theme stays available. Ambient motion is welcome on the home page as long as it stays cheap: nothing computed at runtime, one or two transform animations, the reading column calm. The wordmark is a neon sign (Monoton) over a drawn mark.
 
 ## Evidence on Hand
 

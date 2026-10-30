@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sheet not found · Wormhole</title>
+<title>Page not found · Wormhole</title>
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="{{.Base}}assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="{{.Base}}assets/fonts.css">
@@ -22,9 +22,9 @@
 </header>
 <div class="sheet">
   <main id="content" class="column">
-    <h1 class="title">Sheet not found</h1>
+    <h1 class="title">Page not found</h1>
     <div class="prose">
-      <p>There is no drawing at this address. The index lists every sheet:</p>
+      <p>There is no page at this address. The index lists every page:</p>
       <ol class="index-list">
       {{range .Sheets}}<li><a href="{{.URL}}">{{.Label}}</a> <span class="muted">{{.Summary}}</span></li>{{end}}
       </ol>

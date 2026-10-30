@@ -1,7 +1,8 @@
 // Command docsite renders the Markdown under docs/ into the Wormhole
-// documentation site: one toolchain, no Node. Every page is an engineering
-// drawing sheet; the frame carries the identity and the reading column
-// stays a calm document. Run `go run ./tools/docsite -h` for flags.
+// documentation site: one toolchain, no Node. The home page opens on a neon
+// horizon (a wireframe floor bent into a well under the wormhole) and the
+// reading pages stay a calm navy document. Run `go run ./tools/docsite -h`
+// for flags.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -82,6 +84,7 @@ type Site struct {
 	Sheets    []*Rendered
 	Total     int
 	StarField template.HTML
+	Hero      template.HTML // the home page opener, drawn once at build time
 }
 
 type pageData struct {
@@ -104,12 +107,12 @@ func main() {
 	}
 }
 
-// build renders every sheet and copies the assets.
+// build renders every page and copies the assets.
 func build(root, out, base, version, repo string, now time.Time) error {
 	if !strings.HasPrefix(base, "/") || !strings.HasSuffix(base, "/") {
 		return fmt.Errorf("base %q must start and end with /", base)
 	}
-	site := Site{Base: base, Repo: repo, Version: version, Built: now.UTC().Format("2006-01-02"), Total: len(sheets), StarField: starField(42)}
+	site := Site{Base: base, Repo: repo, Version: version, Built: now.UTC().Format("2006-01-02"), Total: len(sheets), StarField: starField(42), Hero: hero()}
 	for i, s := range sheets {
 		src, err := os.ReadFile(filepath.Join(root, s.Source))
 		if err != nil {
@@ -399,5 +402,47 @@ func starField(seed int64) template.HTML {
 		b.WriteString(`</g>`)
 	}
 	b.WriteString(`</svg>`)
+	return template.HTML(b.String())
+}
+
+// hero draws the home page opener: a wireframe floor in perspective that sags
+// into a well under the wormhole on the horizon, with the terminal cards and
+// the orb that spirals in. The geometry is computed here, once; the browser
+// only animates the ring and the orb.
+func hero() template.HTML {
+	const w, h, nx, ny = 1600, 700, 36, 16
+	point := func(i, j int) (float64, float64) {
+		u := float64(i)/nx*2 - 1 // across, -1 to 1
+		v := float64(j) / ny     // depth, 0 at the horizon to 1 nearest
+		du, dv := u*1.15, (v-0.46)*1.25
+		r := math.Sqrt(du*du + dv*dv)
+		dip := 150 / (1 + math.Pow(r/0.2, 2)) // the well
+		x := 800 + u*(130+1350*math.Pow(v, 1.35))
+		y := 300 + 420*math.Pow(v, 1.6) + dip*(0.35+0.65*v)
+		return x, y
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="hero-art" aria-hidden="true"><div class="hero-sky"></div><div class="hero-stars"></div><div class="hero-sun"></div><div class="hero-ring"></div>`)
+	fmt.Fprintf(&b, `<svg class="hero-mesh" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMax slice" focusable="false">`, w, h)
+	for j := 0; j <= ny; j++ {
+		fmt.Fprintf(&b, `<path class="mx" style="--k:%.2f" d="`, float64(j)/ny)
+		for i := 0; i <= nx; i++ {
+			x, y := point(i, j)
+			fmt.Fprintf(&b, "%s%.0f %.0f", map[bool]string{true: "M", false: "L"}[i == 0], x, y)
+		}
+		b.WriteString(`"/>`)
+	}
+	for i := 0; i <= nx; i++ {
+		b.WriteString(`<path class="my" d="`)
+		for j := 0; j <= ny; j++ {
+			x, y := point(i, j)
+			fmt.Fprintf(&b, "%s%.0f %.0f", map[bool]string{true: "M", false: "L"}[j == 0], x, y)
+		}
+		b.WriteString(`"/>`)
+	}
+	b.WriteString(`<circle class="orb" r="5"><animateMotion dur="11s" repeatCount="indefinite" path="M1560 520 C 1300 440, 1050 470, 960 520 C 880 565, 720 575, 700 540 C 690 515, 760 500, 800 520 C 830 535, 820 560, 800 560"/></circle></svg>`)
+	b.WriteString(`<div class="hero-haze"></div><div class="hero-floor"></div>`)
+	b.WriteString(`<div class="hero-term hero-term-a">$ wormhole ask bob <span class="c">"what do you think about X"</span><br><span class="m">thread</span> 01JB7Q open</div>`)
+	b.WriteString(`<div class="hero-term hero-term-b">$ wormhole inbox<br><span class="m">[01JB7Q]</span> ^alice · what do you think…</div></div>`)
 	return template.HTML(b.String())
 }

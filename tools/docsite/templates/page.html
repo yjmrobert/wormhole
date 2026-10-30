@@ -13,7 +13,7 @@
 (function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
 </script>
 </head>
-<body class="{{if .Home}}home{{else}}sheet-{{.Page.Slug}}{{end}}">
+<body class="{{if .Home}}home{{else}}page-{{.Page.Slug}}{{end}}">
 <a class="skip" href="#content">Skip to content</a>
 {{.StarField}}
 <header class="masthead">
@@ -22,9 +22,9 @@
     <span>Wormhole</span>
   </a>
   <div class="search" role="search">
-    <label class="visually-hidden" for="q">Search the sheets</label>
+    <label class="visually-hidden" for="q">Search the docs</label>
     <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.8 12.8 17 17"/></svg>
-    <input id="q" type="search" placeholder="Search the sheets" autocomplete="off" spellcheck="false" data-index="{{.Base}}search.json">
+    <input id="q" type="search" placeholder="Search the docs" autocomplete="off" spellcheck="false" data-index="{{.Base}}search.json">
     <div class="search-results" id="search-results" hidden></div>
   </div>
   <nav class="masthead-links" aria-label="Project links">
@@ -38,10 +38,14 @@
 </header>
 
 <div class="sheet">
-  <div class="zones zones-top" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span><span>J</span><span>K</span><span>L</span></div>
-  <div class="zones zones-left" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span><span>28</span><span>29</span><span>30</span></div>
-  <nav class="rail" aria-label="Drawing index">
-    <p class="rail-title">Drawing index</p>
+  {{if .Home}}
+  <div class="hero">
+    {{.Hero}}
+    <h1 class="title">{{.Page.Title}}</h1>
+  </div>
+  {{end}}
+  <nav class="rail" aria-label="Index">
+    <p class="rail-title">Index</p>
     <ol>
     {{range .Sheets}}
       <li><a href="{{.URL}}"{{if eq .Slug $.Page.Slug}} aria-current="page"{{end}}><span class="rail-n">{{pad .Number}}</span><span class="rail-label">{{.Label}}</span></a></li>
@@ -50,7 +54,7 @@
   </nav>
 
   <main id="content" class="column">
-    <h1 class="title">{{.Page.Title}}</h1>
+    {{if not .Home}}<h1 class="title">{{.Page.Title}}</h1>{{end}}
     {{if .Home}}
     <div class="lede">{{.Page.Lede}}</div>
     <p class="actions">
@@ -61,15 +65,15 @@
     {{end}}
     <div class="prose">{{.Page.Body}}</div>
 
-    <nav class="pager" aria-label="Adjacent sheets">
-      {{if .Prev}}<a class="prev" href="{{.Prev.URL}}"><span class="pager-k">Previous sheet</span><span>{{.Prev.Label}}</span></a>{{else}}<span></span>{{end}}
-      {{if .Next}}<a class="next" href="{{.Next.URL}}"><span class="pager-k">Next sheet</span><span>{{.Next.Label}}</span></a>{{end}}
+    <nav class="pager" aria-label="Adjacent pages">
+      {{if .Prev}}<a class="prev" href="{{.Prev.URL}}"><span class="pager-k">Previous</span><span>{{.Prev.Label}}</span></a>{{else}}<span></span>{{end}}
+      {{if .Next}}<a class="next" href="{{.Next.URL}}"><span class="pager-k">Next</span><span>{{.Next.Label}}</span></a>{{end}}
     </nav>
 
     <table class="title-block" aria-label="Title block">
       <tr>
         <th scope="row">Project</th><td>Wormhole</td>
-        <th scope="row">Sheet</th><td class="num">{{pad .Page.Number}} of {{pad .Total}}</td>
+        <th scope="row">Page</th><td class="num">{{pad .Page.Number}} of {{pad .Total}}</td>
       </tr>
       <tr>
         <th scope="row">Title</th><td>{{.Page.Label}}</td>
@@ -84,7 +88,7 @@
 
   {{if .Page.Headings}}
   <aside class="contents">
-    <p class="contents-title">On this sheet</p>
+    <p class="contents-title">On this page</p>
     <ol>
     {{range .Page.Headings}}<li class="h{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
     </ol>
@@ -94,7 +98,7 @@
 
 <footer class="colophon">
   <p>Wormhole is an independent open-source project under Apache-2.0. <a href="{{.Repo}}/blob/main/SECURITY.md">Security policy</a> · <a href="{{.Repo}}/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="{{.Repo}}/releases">Releases</a></p>
-  <p>These sheets are rendered from the repository's docs by a small Go program; the site makes no third-party requests.</p>
+  <p>These pages are rendered from the repository's docs by a small Go program; the site makes no third-party requests.</p>
 </footer>
 <script src="{{.Base}}assets/site.js" defer></script>
 </body>

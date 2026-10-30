@@ -2,26 +2,27 @@
   "schema": 1,
   "source": "tools/docsite/assets/style.css",
   "themes": {
-    "light": {
-      "paper": "oklch(96.5% 0.012 85)", "paper-2": "oklch(93.8% 0.016 85)", "desk": "oklch(90% 0.02 80)",
-      "ink": "oklch(26% 0.04 255)", "ink-2": "oklch(43% 0.04 255)", "ink-3": "oklch(47% 0.045 255)",
-      "line": "oklch(52% 0.09 250 / 0.55)", "blue": "oklch(45% 0.16 255)", "blue-strong": "oklch(38% 0.16 258)",
-      "red": "oklch(56% 0.19 35)", "red-text": "oklch(45% 0.18 35)"
-    },
     "dark": {
-      "paper": "oklch(24% 0.07 255)", "paper-2": "oklch(29% 0.075 255)", "desk": "oklch(14% 0.035 262)",
-      "ink": "oklch(94% 0.02 240)", "ink-2": "oklch(80% 0.045 238)", "ink-3": "oklch(70% 0.05 238)",
-      "line": "oklch(82% 0.07 230 / 0.5)", "blue": "oklch(82% 0.11 220)", "blue-strong": "oklch(90% 0.08 215)",
-      "red": "oklch(74% 0.17 40)", "red-text": "oklch(80% 0.15 45)", "star": "oklch(95% 0.02 230)"
+      "navy": "oklch(11% 0.045 285)", "navy-2": "oklch(15% 0.05 288)", "navy-3": "oklch(19.5% 0.055 290)",
+      "ink": "oklch(96% 0.01 300)", "ink-2": "oklch(78% 0.03 300)", "ink-3": "oklch(64% 0.04 300)",
+      "line": "oklch(96% 0.01 300 / 0.14)", "cyan": "oklch(86% 0.14 200)", "cyan-text": "oklch(86% 0.14 200)",
+      "magenta": "oklch(68% 0.27 340)", "magenta-text": "oklch(77% 0.22 345)", "violet": "oklch(56% 0.25 300)", "pink": "oklch(78% 0.2 350)", "star": "oklch(96% 0.01 300)"
+    },
+    "light": {
+      "navy": "oklch(97% 0.012 300)", "navy-2": "oklch(99% 0.005 300)", "navy-3": "oklch(93.5% 0.02 300)",
+      "ink": "oklch(18% 0.05 290)", "ink-2": "oklch(40% 0.05 290)", "ink-3": "oklch(50% 0.05 290)",
+      "line": "oklch(18% 0.05 290 / 0.16)", "cyan": "oklch(86% 0.14 200)", "cyan-text": "oklch(46% 0.12 210)",
+      "magenta": "oklch(68% 0.27 340)", "magenta-text": "oklch(50% 0.24 340)", "violet": "oklch(56% 0.25 300)", "pink": "oklch(78% 0.2 350)"
     }
   },
   "type": {
-    "title": {"family": "Barlow Condensed", "weight": 600, "transform": "uppercase", "tracking": "0.02em"},
-    "label": {"family": "Barlow Condensed", "weight": 600, "transform": "uppercase", "tracking": "0.05em to 0.14em"},
-    "body": {"family": "Barlow", "size": "17px", "lineHeight": 1.55, "measure": "70ch"},
-    "code": {"family": "JetBrains Mono", "sizeInline": "0.86em", "sizeBlock": "0.9rem"}
+    "neon": {"family": "Monoton", "weight": 400, "transform": "uppercase", "tracking": "0.06em"},
+    "title": {"family": "Chakra Petch", "weight": 700, "transform": "uppercase", "tracking": "0.04em"},
+    "label": {"family": "Chakra Petch", "weight": 600, "transform": "uppercase", "tracking": "0.14em to 0.2em"},
+    "body": {"family": "Exo 2", "size": "17px", "lineHeight": 1.6, "measure": "68ch"},
+    "code": {"family": "JetBrains Mono", "sizeInline": "0.86em", "sizeBlock": "0.88rem"}
   },
-  "space": {"base": "4px", "rail": "232px", "contents": "220px", "gutter": "clamp(16px, 4vw, 48px)", "gridMinor": "24px", "gridMajor": "120px"},
-  "radius": {"control": "3px", "block": "4px"},
-  "motion": {"ease": "cubic-bezier(0.16, 1, 0.3, 1)", "feedback": "150ms", "figureLoop": "16s", "starDrift": "120s to 240s"}
+  "space": {"base": "4px", "rail": "232px", "contents": "216px", "gutter": "clamp(16px, 4vw, 56px)", "heroHeight": "640px"},
+  "radius": {"control": "999px", "block": "8px", "figure": "14px"},
+  "motion": {"ease": "cubic-bezier(0.16, 1, 0.3, 1)", "feedback": "150ms", "figureLoop": "16s", "ringBreath": "7s", "orb": "11s", "starDrift": "140s to 260s"}
 }
