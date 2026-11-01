@@ -11,8 +11,8 @@ is an open wormhole; `wormhole ask` opens one and `wormhole reply` travels
 back through it.
 
 Wormhole is an independent open-source project. Every team runs its own bus
-from the templates in `deploy/`; nothing here is hosted and the binary never
-phones home.
+from the templates in `deploy/`; nothing here is hosted and there is no
+telemetry. Explicitly enabled update checks contact GitHub Releases only.
 
 ## Status
 
@@ -100,10 +100,14 @@ wormhole daemon [--once] [--pause|--resume]    # the subscriber; pause is the lo
 wormhole doctor [--deep-link]                  # bus, creds, copilot, display, dead letters
 wormhole login [--creds <file>]                # install credentials privately
 wormhole admin init --url <nats url>           # create the stream and registry bucket
+wormhole completion bash|zsh|fish              # generate shell completion
+wormhole commands [--flags] [--json]           # discover commands and flags
+wormhole update [--enable|--disable]           # update now or control daily checks
 ```
 
-Every command takes `--json` and returns a stable exit code: 0 ok, 1 error,
-2 usage, 3 refused, 4 not found, 5 bus or app unavailable.
+Every command takes `--json`, `--config <path>`, and `--no-input`, and returns
+a stable exit code: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 bus or
+app unavailable. `--no-input` never implies `--yes`.
 
 ## Safety
 

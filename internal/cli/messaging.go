@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
 	"github.com/yjmrobert/wormhole/internal/config"
@@ -21,7 +22,7 @@ const SessionEnv = "COPILOT_AGENT_SESSION_ID"
 // SkillVersion is the default for --skill-version and must equal the
 // version in skills/wormhole/SKILL.md; a test keeps them in step. Bump both
 // together whenever the skill's CLI contract changes.
-const SkillVersion = "0.3.0"
+const SkillVersion = "0.4.0"
 
 // sendResult is the JSON shape of ask, reply and send.
 type sendResult struct {
@@ -64,6 +65,9 @@ func (a *App) guardBody(body string, forceUnsafe bool) error {
 func (a *App) review(c *common, e envelope.Envelope, yes bool) (bool, error) {
 	if yes {
 		return false, nil
+	}
+	if c.noInput {
+		return false, fail(ExitRefused, "--no-input forbids confirmation prompts; review the message and rerun with --yes")
 	}
 	if !a.IsTerminal() {
 		return false, fail(ExitRefused, "not a terminal: show the message to the person, then rerun with --yes")
@@ -126,59 +130,57 @@ func (a *App) publish(ctx context.Context, c *common, cfg *config.Config, store 
 	return nil
 }
 
-func (a *App) ask(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("ask", flag.ContinueOnError)
-	c.bind(fs)
-	repo := fs.String("repo", "", "owner/name the question is about")
-	ref := fs.String("context", "", "short pointer such as 'PR #123'")
-	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
-	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
-	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
-	session := fs.String("session", "", "id of the Copilot session asking (default: $"+SessionEnv+"); the reply is appended to it")
-	pos, err := a.parse(fs, args)
-	if err != nil {
-		return err
+func (a *App) newAskCommand(c *common) *cobra.Command {
+	var repo, ref, skillV, session string
+	var yes, force bool
+	cmd := command("ask <user> <prompt>", "Open a thread with a colleague")
+	cmd.Flags().StringVar(&repo, "repo", "", "owner/name the question is about")
+	cmd.Flags().StringVar(&ref, "context", "", "short pointer such as 'PR #123'")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (sets human_reviewed: false)")
+	cmd.Flags().BoolVar(&force, "force-unsafe", false, "send even if the body looks like it contains secrets")
+	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, "version of the skill producing this message")
+	cmd.Flags().StringVar(&session, "session", "", "id of the Copilot session asking (default: $"+SessionEnv+"); the reply is appended to it")
+	cmd.Args = exactArgs(2, `wormhole ask <user> "<prompt>"`)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		to := args[0]
+		if !envelope.ValidHandle(to) {
+			return fail(ExitNotFound, "%q is not a valid handle", to)
+		}
+		cfg, err := a.loadConfig(c)
+		if err != nil {
+			return err
+		}
+		if to == cfg.Handle {
+			return fail(ExitUsage, "you cannot ask yourself")
+		}
+		body, err := a.readText(args[1])
+		if err != nil {
+			return err
+		}
+		if err := a.guardBody(body, force); err != nil {
+			return err
+		}
+		from := a.me(cfg)
+		if session != "" {
+			from.SessionID = session
+		}
+		e := envelope.NewAsk(from, to, body, a.Now())
+		e.Context = envelope.Context{Repo: repo, Ref: ref}
+		e.SkillV = skillV
+		reviewed, err := a.review(c, e, yes)
+		if err != nil {
+			return err
+		}
+		e.HumanReviewed = reviewed
+		store, err := a.OpenStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		t := threads.Thread{ID: e.ThreadID, Peer: to, Direction: threads.DirectionOut, State: threads.StateSent, RootSessionID: e.RootSessionID, Title: threads.Preview(body, 60), Repo: repo, ExpiresAt: e.ExpiresAt, CreatedAt: e.CreatedAt}
+		return a.publish(cmd.Context(), c, cfg, store, e, t)
 	}
-	if len(pos) != 2 {
-		return fail(ExitUsage, "usage: wormhole ask <user> \"<prompt>\"")
-	}
-	to := pos[0]
-	if !envelope.ValidHandle(to) {
-		return fail(ExitNotFound, "%q is not a valid handle", to)
-	}
-	cfg, err := a.loadConfig(c)
-	if err != nil {
-		return err
-	}
-	if to == cfg.Handle {
-		return fail(ExitUsage, "you cannot ask yourself")
-	}
-	body, err := a.readText(pos[1])
-	if err != nil {
-		return err
-	}
-	if err := a.guardBody(body, *force); err != nil {
-		return err
-	}
-	from := a.me(cfg)
-	if *session != "" {
-		from.SessionID = *session
-	}
-	e := envelope.NewAsk(from, to, body, a.Now())
-	e.Context = envelope.Context{Repo: *repo, Ref: *ref}
-	e.SkillV = *skillV
-	reviewed, err := a.review(c, e, *yes)
-	if err != nil {
-		return err
-	}
-	e.HumanReviewed = reviewed
-	store, err := a.OpenStore()
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	t := threads.Thread{ID: e.ThreadID, Peer: to, Direction: threads.DirectionOut, State: threads.StateSent, RootSessionID: e.RootSessionID, Title: threads.Preview(body, 60), Repo: *repo, ExpiresAt: e.ExpiresAt, CreatedAt: e.CreatedAt}
-	return a.publish(ctx, c, cfg, store, e, t)
+	return cmd
 }
 
 // followUp is shared by reply and send.
@@ -238,35 +240,34 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 	return a.publish(ctx, c, cfg, store, e, t)
 }
 
-func (a *App) reply(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("reply", flag.ContinueOnError)
-	c.bind(fs)
-	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
-	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
-	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
-	pos, err := a.parse(fs, args)
-	if err != nil {
-		return err
+func (a *App) newReplyCommand(c *common) *cobra.Command {
+	var yes, force bool
+	var skillV string
+	cmd := command("reply <thread_id> <text>", "Reply on a thread")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (sets human_reviewed: false)")
+	cmd.Flags().BoolVar(&force, "force-unsafe", false, "send even if the body looks like it contains secrets")
+	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, "version of the skill producing this message")
+	cmd.Args = exactArgs(2, `wormhole reply <thread_id> "<text>"`)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return a.followUp(cmd.Context(), c, envelope.TypeReply, args[0], "", args[1], yes, force, skillV)
 	}
-	if len(pos) != 2 {
-		return fail(ExitUsage, "usage: wormhole reply <thread_id> \"<text>\"")
-	}
-	return a.followUp(ctx, c, envelope.TypeReply, pos[0], "", pos[1], *yes, *force, *skillV)
+	return cmd
 }
 
-func (a *App) send(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("send", flag.ContinueOnError)
-	c.bind(fs)
-	thread := fs.String("thread", "", "open thread to send on")
-	yes := fs.Bool("yes", false, "skip the confirmation (sets human_reviewed: false)")
-	force := fs.Bool("force-unsafe", false, "send even if the body looks like it contains secrets")
-	skillV := fs.String("skill-version", SkillVersion, "version of the skill producing this message")
-	pos, err := a.parse(fs, args)
-	if err != nil {
-		return err
+func (a *App) newSendCommand(c *common) *cobra.Command {
+	var thread, skillV string
+	var yes, force bool
+	cmd := command("send <user> <text>", "Send a follow-up on an open thread")
+	cmd.Flags().StringVar(&thread, "thread", "", "open thread to send on")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (sets human_reviewed: false)")
+	cmd.Flags().BoolVar(&force, "force-unsafe", false, "send even if the body looks like it contains secrets")
+	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, "version of the skill producing this message")
+	cmd.Args = exactArgs(2, `wormhole send <user> --thread <id> "<text>"`)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if thread == "" {
+			return fail(ExitUsage, `usage: wormhole send <user> --thread <id> "<text>"`)
+		}
+		return a.followUp(cmd.Context(), c, envelope.TypeMessage, thread, args[0], args[1], yes, force, skillV)
 	}
-	if len(pos) != 2 || *thread == "" {
-		return fail(ExitUsage, "usage: wormhole send <user> --thread <id> \"<text>\"")
-	}
-	return a.followUp(ctx, c, envelope.TypeMessage, *thread, pos[0], pos[1], *yes, *force, *skillV)
+	return cmd
 }

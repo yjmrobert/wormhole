@@ -32,4 +32,6 @@ deployments that changed the shipped permissions.
   as a single argument, never through a shell.
 - The daemon refuses to start when its config is readable by other users or
   a credentials file sits inside a git working tree.
-- The binary never phones home: no telemetry, no update checks.
+- The binary sends no telemetry. Update checks are opt-in, contact GitHub
+  Releases only, and can be disabled with `wormhole update --disable` or
+  `WORMHOLE_NO_UPDATE_CHECK=1`; downloaded archives are checksum-verified.

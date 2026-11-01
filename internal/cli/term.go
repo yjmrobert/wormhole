@@ -27,13 +27,17 @@ func (a *App) confirm(prompt string) (bool, error) {
 }
 
 // readSecret reads a password without echo when stdin is a terminal.
-func (a *App) readSecret(prompt string) (string, error) {
-	fmt.Fprint(a.Stdout, prompt)
+func (a *App) readSecret(c *common, prompt string) (string, error) {
 	if f, ok := a.Stdin.(*os.File); ok && isTerminal(f) {
+		if c.noInput {
+			return "", fail(ExitRefused, "--no-input forbids password prompts; use --password-file or provide credentials on stdin")
+		}
+		fmt.Fprint(a.Stdout, prompt)
 		b, err := term.ReadPassword(int(f.Fd()))
 		fmt.Fprintln(a.Stdout)
 		return strings.TrimSpace(string(b)), err
 	}
+	fmt.Fprint(a.Stdout, prompt)
 	r := bufio.NewReader(a.Stdin)
 	line, err := r.ReadString('\n')
 	if err != nil && err != io.EOF {

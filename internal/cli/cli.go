@@ -7,14 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"charm.land/fang/v2"
+	"github.com/spf13/cobra"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
 	natsbus "github.com/yjmrobert/wormhole/internal/bus/nats"
@@ -51,6 +54,8 @@ type App struct {
 	Now       func() time.Time
 	Hostname  string
 	Version   string
+	Commit    string
+	BuildDate string
 }
 
 // Default returns an App wired to the real environment.
@@ -73,6 +78,8 @@ func Default() *App {
 		Now:       time.Now,
 		Hostname:  host,
 		Version:   "dev",
+		Commit:    "unknown",
+		BuildDate: "unknown",
 	}
 }
 
@@ -102,13 +109,9 @@ func wrap(code int, err error) error {
 
 // common flags every command accepts.
 type common struct {
-	json   bool
-	config string
-}
-
-func (c *common) bind(fs *flag.FlagSet) {
-	fs.BoolVar(&c.json, "json", false, "machine-readable output")
-	fs.StringVar(&c.config, "config", "", "config file (default "+config.DefaultPath()+")")
+	json    bool
+	config  string
+	noInput bool
 }
 
 func (a *App) loadConfig(c *common) (*config.Config, error) {
@@ -126,48 +129,6 @@ func (a *App) loadConfig(c *common) (*config.Config, error) {
 	return cfg, nil
 }
 
-// splitArgs lets flags appear before or after positionals, which is how
-// agents tend to write them. Non-boolean flags consume the next argument.
-func splitArgs(fs *flag.FlagSet, args []string) (flags, positional []string) {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			positional = append(positional, args[i+1:]...)
-			break
-		}
-		if len(arg) < 2 || !strings.HasPrefix(arg, "-") {
-			positional = append(positional, arg)
-			continue
-		}
-		flags = append(flags, arg)
-		if strings.Contains(arg, "=") {
-			continue
-		}
-		name := strings.TrimLeft(arg, "-")
-		f := fs.Lookup(name)
-		if f == nil {
-			continue
-		}
-		if bv, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && bv.IsBoolFlag() {
-			continue
-		}
-		if i+1 < len(args) {
-			flags = append(flags, args[i+1])
-			i++
-		}
-	}
-	return flags, positional
-}
-
-func (a *App) parse(fs *flag.FlagSet, args []string) ([]string, error) {
-	fs.SetOutput(a.Stderr)
-	flags, positional := splitArgs(fs, args)
-	if err := fs.Parse(flags); err != nil {
-		return nil, fail(ExitUsage, "%v", err)
-	}
-	return positional, nil
-}
-
 // emit prints v as JSON (--json) or via human, which writes the text form.
 func (a *App) emit(c *common, v any, human func(w io.Writer)) {
 	if c.json {
@@ -179,78 +140,130 @@ func (a *App) emit(c *common, v any, human func(w io.Writer)) {
 	human(a.Stdout)
 }
 
-const usage = `wormhole: open a wormhole between two Copilot sessions on two machines.
+func command(use, short string) *cobra.Command {
+	cmd := &cobra.Command{Use: use, Short: short, DisableFlagsInUseLine: true}
+	cmd.Flags().SetInterspersed(true)
+	return cmd
+}
 
-Usage:
-  wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes] [--force-unsafe]
-  wormhole reply <thread_id> "<text>" [--yes]
-  wormhole send <user> --thread <id> "<text>" [--yes]
-  wormhole inbox [--watch|--ui] [--all]
-  wormhole open <thread_id> [--agent] [--yes] [--no-start]
-  wormhole snooze <thread_id> [<duration>|off]
-  wormhole decline <thread_id> ["<reason>"] [--yes]
-  wormhole threads [--open] [--peer <user>]
-  wormhole users
-  wormhole daemon [--once] [--pause|--resume]
-  wormhole doctor [--deep-link]
-  wormhole login [--creds <file>]
-  wormhole init
-  wormhole admin init --url <nats url> [--user admin] [--tls-ca <pem>]
-  wormhole version
+func exactArgs(n int, usage string) cobra.PositionalArgs {
+	return func(_ *cobra.Command, args []string) error {
+		if len(args) != n {
+			return fail(ExitUsage, "usage: %s", usage)
+		}
+		return nil
+	}
+}
 
-Every command accepts --json and --config <path>. A prompt or text of "-"
-is read from stdin. Exit codes: 0 ok, 1 error, 2 usage, 3 refused,
-4 not found, 5 bus or app unavailable.
-`
+func rangeArgs(min, max int, usage string) cobra.PositionalArgs {
+	return func(_ *cobra.Command, args []string) error {
+		if len(args) < min || len(args) > max {
+			return fail(ExitUsage, "usage: %s", usage)
+		}
+		return nil
+	}
+}
+
+func noArgs(usage string) cobra.PositionalArgs {
+	return exactArgs(0, usage)
+}
+
+func (a *App) newRootCommand() (*cobra.Command, *common) {
+	c := &common{}
+	root := command("wormhole", "Open a wormhole between two Copilot sessions on two machines.")
+	root.Long = "Wormhole sends questions and replies between Copilot sessions on two machines.\nEvery command accepts --json and --config. Exit codes: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 unavailable."
+	root.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
+	root.SetOut(a.Stdout)
+	root.SetErr(a.Stderr)
+	root.CompletionOptions.DisableDefaultCmd = true
+	root.PersistentFlags().BoolVar(&c.json, "json", false, "machine-readable output")
+	root.PersistentFlags().StringVar(&c.config, "config", "", "config file (default "+config.DefaultPath()+")")
+	root.PersistentFlags().BoolVar(&c.noInput, "no-input", false, "forbid interactive prompts (does not imply --yes)")
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return fail(ExitUsage, "%v", err)
+	})
+	root.SetVersionTemplate(fmt.Sprintf("wormhole {{.Version}}\ncommit: %s\nbuild date: %s\n", a.commit(), a.buildDate()))
+	root.AddCommand(
+		a.newAskCommand(c),
+		a.newReplyCommand(c),
+		a.newSendCommand(c),
+		a.newInboxCommand(c),
+		a.newOpenCommand(c),
+		a.newSnoozeCommand(c),
+		a.newDeclineCommand(c),
+		a.newThreadsCommand(c),
+		a.newUsersCommand(c),
+		a.newDaemonCommand(c),
+		a.newDoctorCommand(c),
+		a.newLoginCommand(c),
+		a.newInitCommand(c),
+		a.newAdminCommand(c),
+		a.newCompletionCommand(),
+		a.newCommandsCommand(c),
+		a.newVersionCommand(c),
+		a.newManCommand(),
+	)
+	return root, c
+}
+
+func (a *App) commit() string {
+	if a.Commit == "" {
+		return "unknown"
+	}
+	return a.Commit
+}
+
+func (a *App) buildDate() string {
+	if a.BuildDate == "" {
+		return "unknown"
+	}
+	return a.BuildDate
+}
+
+func (a *App) printVersion(w io.Writer) {
+	fmt.Fprintf(w, "wormhole %s\ncommit: %s\nbuild date: %s\n", a.Version, a.commit(), a.buildDate())
+}
+
+func jsonRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "--json" {
+			return true
+		}
+		if value, ok := strings.CutPrefix(arg, "--json="); ok {
+			b, err := strconv.ParseBool(value)
+			return err != nil || b
+		}
+	}
+	return false
+}
+
+// plainWriter keeps Fang from detecting a terminal for JSON-mode help.
+type plainWriter struct{ io.Writer }
 
 // Run executes args and returns the exit code.
 func (a *App) Run(ctx context.Context, args []string) int {
-	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprint(a.Stdout, usage)
-		return ExitOK
+	root, _ := a.newRootCommand()
+	root.SetArgs(args)
+	jsonOut := jsonRequested(args)
+	if jsonOut {
+		root.SetOut(plainWriter{a.Stdout})
+		root.SetErr(plainWriter{a.Stderr})
 	}
-	cmd, rest := args[0], args[1:]
-	var c common
-	var err error
-	switch cmd {
-	case "ask":
-		err = a.ask(ctx, &c, rest)
-	case "reply":
-		err = a.reply(ctx, &c, rest)
-	case "send":
-		err = a.send(ctx, &c, rest)
-	case "inbox":
-		err = a.inbox(ctx, &c, rest)
-	case "open":
-		err = a.open(ctx, &c, rest)
-	case "snooze":
-		err = a.snooze(ctx, &c, rest)
-	case "decline":
-		err = a.decline(ctx, &c, rest)
-	case "threads":
-		err = a.threads(ctx, &c, rest)
-	case "users":
-		err = a.users(ctx, &c, rest)
-	case "daemon":
-		err = a.daemon(ctx, &c, rest)
-	case "doctor":
-		err = a.doctor(ctx, &c, rest)
-	case "login":
-		err = a.login(ctx, &c, rest)
-	case "init":
-		err = a.initCmd(ctx, &c, rest)
-	case "admin":
-		err = a.admin(ctx, &c, rest)
-	case "version":
-		fs := flag.NewFlagSet("version", flag.ContinueOnError)
-		c.bind(fs)
-		if _, err = a.parse(fs, rest); err == nil {
-			a.emit(&c, map[string]string{"version": a.Version}, func(w io.Writer) { fmt.Fprintf(w, "wormhole %s\n", a.Version) })
-		}
-	default:
-		fmt.Fprintf(a.Stderr, "wormhole: unknown command %q\n\n%s", cmd, usage)
-		return ExitUsage
-	}
+	err := fang.Execute(
+		ctx,
+		root,
+		fang.WithVersion(a.Version),
+		fang.WithCommit(a.Commit),
+		fang.WithoutManpage(),
+		fang.WithErrorHandler(func(w io.Writer, styles fang.Styles, err error) {
+			if !jsonOut {
+				fang.DefaultErrorHandler(w, styles, err)
+			}
+		}),
+	)
 	if err == nil {
 		return ExitOK
 	}
@@ -258,12 +271,11 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	var ee *exitError
 	if errors.As(err, &ee) {
 		code = ee.code
+	} else if strings.HasPrefix(err.Error(), "unknown command") {
+		code = ExitUsage
 	}
-	if c.json {
-		enc := json.NewEncoder(a.Stdout)
-		_ = enc.Encode(map[string]any{"ok": false, "error": err.Error(), "code": code})
-	} else {
-		fmt.Fprintf(a.Stderr, "wormhole %s: %v\n", cmd, err)
+	if jsonOut {
+		_ = json.NewEncoder(a.Stdout).Encode(map[string]any{"ok": false, "error": err.Error(), "code": code})
 	}
 	return code
 }

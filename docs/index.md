@@ -11,8 +11,8 @@ a thread is an open wormhole; `wormhole ask` opens one and `wormhole reply`
 travels back through it.
 
 Wormhole is an independent open-source project under Apache-2.0. Every
-team runs its own bus from the shipped templates; nothing is hosted and the
-binary never phones home.
+team runs its own bus from the shipped templates; nothing is hosted and there
+is no telemetry. Explicitly enabled update checks contact GitHub Releases only.
 
 ## Status
 

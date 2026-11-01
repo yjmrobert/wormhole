@@ -3,13 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
-	"unicode"
 
-	"golang.org/x/term"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/daemon"
@@ -38,135 +38,423 @@ func (a *App) watch(ctx context.Context, c *common) error {
 		return err
 	}
 	defer store.Close()
-	w := &watcher{app: a, c: c, cfg: cfg, store: store, in: in, out: a.Stdout, keys: make(chan string, 16)}
-	return w.run(ctx)
+
+	w := newWatchModel(ctx, a, c, cfg, store)
+	if err := w.refresh(ctx); err != nil {
+		return err
+	}
+	p := tea.NewProgram(w, tea.WithContext(ctx), tea.WithInput(in), tea.WithOutput(a.Stdout))
+	w.releaseTerminal = p.ReleaseTerminal
+	w.restoreTerminal = p.RestoreTerminal
+	_, err = p.Run()
+	if ctx.Err() != nil {
+		return nil
+	}
+	return err
+}
+
+type watchMode int
+
+const (
+	watchBrowse watchMode = iota
+	watchSnoozeInput
+	watchDeclineInput
+	watchOpenConfirm
+	watchDeclineConfirm
+)
+
+type watchTickMsg time.Time
+
+type watchRefreshMsg struct {
+	id     int
+	manual bool
+	items  []threads.Thread
+	err    error
+}
+
+type watchOpenMsg struct {
+	res        openResult
+	err        error
+	restoreErr error
+}
+
+type watchSnoozeMsg struct {
+	thread threads.Thread
+	res    snoozeResult
+	err    error
+}
+
+type watchDeclineMsg struct {
+	res declineResult
+	err error
 }
 
 type watcher struct {
+	ctx   context.Context
 	app   *App
 	c     *common
 	cfg   *config.Config
 	store *threads.Store
-	in    *os.File
-	out   io.Writer
-	keys  chan string
-	state *term.State
 
+	width  int
+	height int
 	items  []threads.Thread
 	sel    int
-	scroll int
 	status string
-	// input, when non-nil, is a line being typed in the status row.
-	input *lineInput
-}
-
-type lineInput struct {
+	mode   watchMode
 	prompt string
-	buf    []rune
+
+	pending       threads.Thread
+	pendingAgent  bool
+	pendingReason string
+	busy          bool
+
+	viewport viewport.Model
+	input    textinput.Model
+
+	refreshing bool
+	refreshID  int
+
+	loadStaged      func(context.Context) ([]threads.Thread, error)
+	openThread      func(context.Context, threads.Thread, bool) (openResult, error)
+	snoozeThread    func(context.Context, threads.Thread, time.Duration) (snoozeResult, error)
+	declineThread   func(context.Context, threads.Thread, string) (declineResult, error)
+	releaseTerminal func() error
+	restoreTerminal func() error
 }
 
-// Key names for escape sequences the view understands.
-const (
-	keyUp     = "\x1b[A"
-	keyDown   = "\x1b[B"
-	keyPgUp   = "\x1b[5~"
-	keyPgDown = "\x1b[6~"
-	keyEsc    = "\x1b"
-	keyCtrlC  = "\x03"
-	keyEnter  = "\r"
-	keyBksp   = "\x7f"
-)
+func newWatchModel(ctx context.Context, a *App, c *common, cfg *config.Config, store *threads.Store) *watcher {
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	vp.FillHeight = true
+	in := textinput.New()
+	in.SetVirtualCursor(false)
+	w := &watcher{
+		ctx:      ctx,
+		app:      a,
+		c:        c,
+		cfg:      cfg,
+		store:    store,
+		width:    80,
+		height:   24,
+		viewport: vp,
+		input:    in,
+	}
+	w.loadStaged = func(ctx context.Context) ([]threads.Thread, error) {
+		return a.staged(ctx, store, true)
+	}
+	w.openThread = func(ctx context.Context, t threads.Thread, agent bool) (openResult, error) {
+		return a.openThread(ctx, c, cfg, store, t, agent)
+	}
+	w.snoozeThread = func(ctx context.Context, t threads.Thread, d time.Duration) (snoozeResult, error) {
+		return a.snoozeThread(ctx, store, t, d)
+	}
+	w.declineThread = func(ctx context.Context, t threads.Thread, reason string) (declineResult, error) {
+		return a.declineThread(ctx, cfg, store, t, reason)
+	}
+	w.resize()
+	return w
+}
 
-func (w *watcher) run(ctx context.Context) error {
-	if err := w.raw(); err != nil {
-		return fail(ExitError, "raw mode: %v", err)
-	}
-	defer w.cooked()
-	go w.readKeys()
-	fmt.Fprint(w.out, "\x1b[?25l") // hide the cursor
-	defer fmt.Fprint(w.out, "\x1b[?25h\x1b[2J\x1b[H")
-	if err := w.refresh(ctx); err != nil {
-		return err
-	}
-	w.render()
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-tick.C:
-			if err := w.refresh(ctx); err == nil {
-				w.render()
-			}
-		case key := <-w.keys:
-			quit, err := w.handle(ctx, key)
-			if err != nil {
-				return err
-			}
-			if quit {
-				return nil
-			}
-			w.render()
+func (w *watcher) Init() tea.Cmd {
+	return watchTick()
+}
+
+func watchTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return watchTickMsg(t) })
+}
+
+func (w *watcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		w.width, w.height = msg.Width, msg.Height
+		w.resize()
+		return w, nil
+	case watchTickMsg:
+		if w.busy || w.refreshing {
+			return w, watchTick()
+		}
+		return w, tea.Batch(w.nextRefresh(false), watchTick())
+	case watchRefreshMsg:
+		if msg.id != w.refreshID {
+			return w, nil
+		}
+		w.refreshing = false
+		if msg.err != nil {
+			w.status = "refresh failed: " + msg.err.Error()
+			return w, nil
+		}
+		w.setItems(msg.items)
+		if msg.manual {
+			w.status = "refreshed"
+		}
+		return w, nil
+	case watchOpenMsg:
+		w.busy = false
+		switch {
+		case msg.err != nil && msg.restoreErr != nil:
+			w.status = fmt.Sprintf("open failed: %v; restore terminal: %v", msg.err, msg.restoreErr)
+		case msg.err != nil:
+			w.status = "open failed: " + msg.err.Error()
+		case msg.restoreErr != nil:
+			w.status = "restore terminal: " + msg.restoreErr.Error()
+		case msg.res.Opened:
+			w.status = fmt.Sprintf("opened session %s in the app", msg.res.SessionID)
+		default:
+			w.status = fmt.Sprintf("session %s started; the app did not open (%s); fallback: %s", msg.res.SessionID, msg.res.OpenError, msg.res.Fallback)
+		}
+		return w, w.nextRefresh(false)
+	case watchSnoozeMsg:
+		w.busy = false
+		switch {
+		case msg.err != nil:
+			w.status = "snooze failed: " + msg.err.Error()
+		case msg.res.SnoozedUntil == "":
+			w.status = fmt.Sprintf("thread %s is back in the inbox", msg.thread.ID)
+		default:
+			w.status = fmt.Sprintf("snoozed ^%s until %s", msg.thread.Peer, msg.res.SnoozedUntil)
+		}
+		return w, w.nextRefresh(false)
+	case watchDeclineMsg:
+		w.busy = false
+		if msg.err != nil {
+			w.status = "decline failed: " + msg.err.Error()
+		} else {
+			w.status = fmt.Sprintf("declined; ^%s will see: %s", msg.res.Peer, msg.res.Status)
+		}
+		return w, w.nextRefresh(false)
+	case tea.KeyPressMsg:
+		return w.handleKey(msg)
+	default:
+		if w.mode == watchSnoozeInput || w.mode == watchDeclineInput {
+			var cmd tea.Cmd
+			w.input, cmd = w.input.Update(msg)
+			return w, cmd
 		}
 	}
+	return w, nil
 }
 
-func (w *watcher) raw() error {
-	st, err := term.MakeRaw(int(w.in.Fd()))
-	if err != nil {
-		return err
+func (w *watcher) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	if w.busy {
+		return w, nil
 	}
-	w.state = st
-	return nil
-}
-
-func (w *watcher) cooked() {
-	if w.state != nil {
-		_ = term.Restore(int(w.in.Fd()), w.state)
-		w.state = nil
+	switch w.mode {
+	case watchSnoozeInput, watchDeclineInput:
+		switch key {
+		case "esc", "ctrl+c":
+			if w.mode == watchSnoozeInput {
+				w.status = "snooze cancelled"
+			} else {
+				w.status = "decline cancelled"
+			}
+			w.endInput()
+			return w, nil
+		case "enter":
+			return w.submitInput()
+		default:
+			var cmd tea.Cmd
+			w.input, cmd = w.input.Update(msg)
+			return w, cmd
+		}
+	case watchOpenConfirm:
+		if key == "y" || key == "Y" {
+			t, agent := w.pending, w.pendingAgent
+			w.endInput()
+			w.busy = true
+			w.status = "opening..."
+			return w, w.openCmd(t, agent)
+		}
+		w.status = "not started; it stays in the inbox"
+		w.endInput()
+		return w, nil
+	case watchDeclineConfirm:
+		if key == "y" || key == "Y" {
+			t, reason := w.pending, w.pendingReason
+			w.endInput()
+			w.busy = true
+			w.status = "declining..."
+			return w, w.declineCmd(t, reason)
+		}
+		w.status = "not declined; it stays in the inbox"
+		w.endInput()
+		return w, nil
 	}
+
+	switch key {
+	case "q", "ctrl+c":
+		return w, tea.Quit
+	case "j", "down":
+		w.selectIndex(w.sel + 1)
+	case "k", "up":
+		w.selectIndex(w.sel - 1)
+	case "J", "pgdown", "space":
+		w.viewport.PageDown()
+	case "K", "pgup":
+		w.viewport.PageUp()
+	case "r":
+		if !w.refreshing {
+			return w, w.nextRefresh(true)
+		}
+	case "enter":
+		w.beginOpen(false)
+	case "a":
+		w.beginOpen(true)
+	case "s":
+		w.beginSnooze()
+	case "d":
+		w.beginDecline()
+	}
+	return w, nil
 }
 
-// readKeys forwards stdin to the key channel: an escape sequence as one
-// key, plain bytes one by one.
-func (w *watcher) readKeys() {
-	buf := make([]byte, 32)
-	for {
-		n, err := w.in.Read(buf)
+func (w *watcher) beginOpen(agent bool) {
+	t, ok := w.selected()
+	if !ok {
+		return
+	}
+	if err := w.app.checkAgentProfile(w.cfg, agent); err != nil {
+		w.status = err.Error()
+		return
+	}
+	w.mode = watchOpenConfirm
+	w.pending = t
+	w.pendingAgent = agent
+	w.prompt = openPrompt(t, agent)
+}
+
+func (w *watcher) beginSnooze() {
+	t, ok := w.selected()
+	if !ok {
+		return
+	}
+	def := daemon.ShortDuration(w.cfg.Daemon.SnoozeDefault)
+	w.beginInput(watchSnoozeInput, fmt.Sprintf("snooze ^%s for [%s, or off]: ", t.Peer, def), t)
+}
+
+func (w *watcher) beginDecline() {
+	t, ok := w.selected()
+	if !ok {
+		return
+	}
+	w.beginInput(watchDeclineInput, fmt.Sprintf("decline ^%s; reason for them (optional, Esc cancels): ", t.Peer), t)
+}
+
+func (w *watcher) beginInput(mode watchMode, prompt string, t threads.Thread) {
+	w.mode = mode
+	w.prompt = prompt
+	w.pending = t
+	w.input.Reset()
+	w.input.Prompt = ""
+	w.input.SetWidth(max(1, w.width-len([]rune(prompt))-1))
+	_ = w.input.Focus()
+}
+
+func (w *watcher) endInput() {
+	w.mode = watchBrowse
+	w.prompt = ""
+	w.pending = threads.Thread{}
+	w.pendingAgent = false
+	w.pendingReason = ""
+	w.input.Blur()
+	w.input.Reset()
+}
+
+func (w *watcher) submitInput() (tea.Model, tea.Cmd) {
+	t := w.pending
+	value := w.input.Value()
+	if w.mode == watchSnoozeInput {
+		d, err := parseSnooze(strings.TrimSpace(value), w.cfg.Daemon.SnoozeDefault)
 		if err != nil {
-			close(w.keys)
-			return
+			w.status = err.Error()
+			w.endInput()
+			return w, nil
 		}
-		chunk := string(buf[:n])
-		if strings.HasPrefix(chunk, keyEsc) {
-			w.keys <- chunk
-			continue
+		w.endInput()
+		w.busy = true
+		w.status = "snoozing..."
+		return w, w.snoozeCmd(t, d)
+	}
+
+	w.mode = watchDeclineConfirm
+	w.pendingReason = value
+	w.prompt = declinePrompt(t, value)
+	w.input.Blur()
+	return w, nil
+}
+
+func (w *watcher) openCmd(t threads.Thread, agent bool) tea.Cmd {
+	return func() tea.Msg {
+		var msg watchOpenMsg
+		if w.releaseTerminal != nil {
+			if err := w.releaseTerminal(); err != nil {
+				msg.err = fmt.Errorf("release terminal: %w", err)
+				return msg
+			}
 		}
-		for _, r := range chunk {
-			w.keys <- string(r)
+		msg.res, msg.err = w.openThread(w.ctx, t, agent)
+		if w.restoreTerminal != nil {
+			msg.restoreErr = w.restoreTerminal()
 		}
+		return msg
+	}
+}
+
+func (w *watcher) snoozeCmd(t threads.Thread, d time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		res, err := w.snoozeThread(w.ctx, t, d)
+		return watchSnoozeMsg{thread: t, res: res, err: err}
+	}
+}
+
+func (w *watcher) declineCmd(t threads.Thread, reason string) tea.Cmd {
+	return func() tea.Msg {
+		res, err := w.declineThread(w.ctx, t, reason)
+		return watchDeclineMsg{res: res, err: err}
 	}
 }
 
 // refresh reloads the inbox, keeping the selection on the same thread.
 func (w *watcher) refresh(ctx context.Context) error {
-	list, err := w.app.staged(ctx, w.store, true)
+	items, err := w.loadStaged(ctx)
 	if err != nil {
 		return err
 	}
-	var selID string
-	if w.sel < len(w.items) {
-		selID = w.items[w.sel].ID
+	w.setItems(items)
+	return nil
+}
+
+func (w *watcher) nextRefresh(manual bool) tea.Cmd {
+	w.refreshID++
+	id := w.refreshID
+	w.refreshing = true
+	return func() tea.Msg {
+		items, err := w.loadStaged(w.ctx)
+		return watchRefreshMsg{id: id, manual: manual, items: items, err: err}
 	}
-	w.items = list
+}
+
+func (w *watcher) setItems(items []threads.Thread) {
+	oldID := ""
+	if t, ok := w.selected(); ok {
+		oldID = t.ID
+	}
+	w.items = items
 	w.sel = 0
-	for i, t := range list {
-		if t.ID == selID {
+	for i, t := range items {
+		if t.ID == oldID {
 			w.sel = i
+			break
 		}
 	}
-	return nil
+	newID := ""
+	if t, ok := w.selected(); ok {
+		newID = t.ID
+	}
+	w.setViewportContent()
+	if oldID != newID {
+		w.viewport.GotoTop()
+	}
 }
 
 func (w *watcher) selected() (threads.Thread, bool) {
@@ -176,187 +464,45 @@ func (w *watcher) selected() (threads.Thread, bool) {
 	return w.items[w.sel], true
 }
 
-// handle acts on one key. It returns true when the view should close.
-func (w *watcher) handle(ctx context.Context, key string) (bool, error) {
-	switch key {
-	case "q", keyCtrlC:
-		return true, nil
-	case "j", keyDown:
-		if w.sel < len(w.items)-1 {
-			w.sel++
-			w.scroll = 0
-		}
-	case "k", keyUp:
-		if w.sel > 0 {
-			w.sel--
-			w.scroll = 0
-		}
-	case "J", keyPgDown, " ":
-		w.scroll += w.paneHeight()
-	case "K", keyPgUp:
-		w.scroll -= w.paneHeight()
-		if w.scroll < 0 {
-			w.scroll = 0
-		}
-	case "r":
-		if err := w.refresh(ctx); err != nil {
-			return false, err
-		}
-		w.status = "refreshed"
-	case keyEnter, "\n":
-		w.openSelected(ctx, false)
-	case "a":
-		w.openSelected(ctx, true)
-	case "s":
-		w.snoozeSelected(ctx)
-	case "d":
-		w.declineSelected(ctx)
+func (w *watcher) selectIndex(i int) {
+	if i < 0 || i >= len(w.items) || i == w.sel {
+		return
 	}
-	return false, nil
+	w.sel = i
+	w.setViewportContent()
+	w.viewport.GotoTop()
 }
 
-func (w *watcher) openSelected(ctx context.Context, agent bool) {
-	t, ok := w.selected()
-	if !ok {
-		return
-	}
-	if err := w.app.checkAgentProfile(w.cfg, agent); err != nil {
-		w.status = err.Error()
-		return
-	}
-	if !w.confirm(openPrompt(t, agent)) {
-		w.status = "not started; it stays in the inbox"
-		return
-	}
-	// The kickoff runs for up to minutes and prints progress; give it the
-	// terminal back for that.
-	w.cooked()
-	fmt.Fprint(w.out, "\x1b[2J\x1b[H\x1b[?25h")
-	res, err := w.app.openThread(ctx, w.c, w.cfg, w.store, t, agent)
-	fmt.Fprint(w.out, "\x1b[?25l")
-	_ = w.raw()
-	switch {
-	case err != nil:
-		w.status = "open failed: " + err.Error()
-	case res.Opened:
-		w.status = fmt.Sprintf("opened session %s in the app", res.SessionID)
-	default:
-		w.status = fmt.Sprintf("session %s started; the app did not open (%s); fallback: %s", res.SessionID, res.OpenError, res.Fallback)
-	}
-	_ = w.refresh(ctx)
-}
-
-func (w *watcher) snoozeSelected(ctx context.Context) {
-	t, ok := w.selected()
-	if !ok {
-		return
-	}
-	def := daemon.ShortDuration(w.cfg.Daemon.SnoozeDefault)
-	line, ok := w.readLine(fmt.Sprintf("snooze ^%s for [%s, or off]: ", t.Peer, def))
-	if !ok {
-		w.status = "snooze cancelled"
-		return
-	}
-	d, err := parseSnooze(strings.TrimSpace(line), w.cfg.Daemon.SnoozeDefault)
-	if err != nil {
-		w.status = err.Error()
-		return
-	}
-	res, err := w.app.snoozeThread(ctx, w.store, t, d)
-	switch {
-	case err != nil:
-		w.status = "snooze failed: " + err.Error()
-	case res.SnoozedUntil == "":
-		w.status = fmt.Sprintf("thread %s is back in the inbox", t.ID)
-	default:
-		w.status = fmt.Sprintf("snoozed ^%s until %s", t.Peer, res.SnoozedUntil)
-	}
-	_ = w.refresh(ctx)
-}
-
-func (w *watcher) declineSelected(ctx context.Context) {
-	t, ok := w.selected()
-	if !ok {
-		return
-	}
-	reason, ok := w.readLine(fmt.Sprintf("decline ^%s; reason for them (optional, Esc cancels): ", t.Peer))
-	if !ok {
-		w.status = "decline cancelled"
-		return
-	}
-	if !w.confirm(declinePrompt(t, reason)) {
-		w.status = "not declined; it stays in the inbox"
-		return
-	}
-	res, err := w.app.declineThread(ctx, w.cfg, w.store, t, reason)
-	if err != nil {
-		w.status = "decline failed: " + err.Error()
+func (w *watcher) setViewportContent() {
+	if t, ok := w.selected(); ok {
+		w.viewport.SetContentLines(wrapLines(t.StagedKickoff, w.width))
 	} else {
-		w.status = fmt.Sprintf("declined; ^%s will see: %s", res.Peer, res.Status)
+		w.viewport.SetContent("")
 	}
-	_ = w.refresh(ctx)
 }
 
-// confirm asks a yes/no question in the status row and reads one key.
-func (w *watcher) confirm(prompt string) bool {
-	w.input = &lineInput{prompt: prompt + " [y/N] "}
-	w.render()
-	defer func() { w.input = nil }()
-	for key := range w.keys {
-		switch key {
-		case "y", "Y":
-			return true
-		case keyCtrlC:
-			return false
-		default:
-			return false
-		}
+func (w *watcher) resize() {
+	if w.width < 1 {
+		w.width = 1
 	}
-	return false
-}
-
-// readLine reads a line typed in the status row. Esc cancels.
-func (w *watcher) readLine(prompt string) (string, bool) {
-	w.input = &lineInput{prompt: prompt}
-	w.render()
-	defer func() { w.input = nil }()
-	for key := range w.keys {
-		switch key {
-		case keyEnter, "\n":
-			return string(w.input.buf), true
-		case keyEsc, keyCtrlC:
-			return "", false
-		case keyBksp, "\b":
-			if n := len(w.input.buf); n > 0 {
-				w.input.buf = w.input.buf[:n-1]
-			}
-		default:
-			for _, r := range key {
-				if unicode.IsPrint(r) {
-					w.input.buf = append(w.input.buf, r)
-				}
-			}
-		}
-		w.render()
+	if w.height < 1 {
+		w.height = 1
 	}
-	return "", false
-}
-
-// size is the terminal size, with a fallback for odd stdouts.
-func (w *watcher) size() (int, int) {
-	if f, ok := w.out.(*os.File); ok {
-		if cols, rows, err := term.GetSize(int(f.Fd())); err == nil && cols > 0 && rows > 0 {
-			return cols, rows
-		}
+	w.viewport.SetWidth(w.width)
+	w.viewport.SetHeight(w.paneHeight())
+	w.setViewportContent()
+	if w.mode == watchSnoozeInput || w.mode == watchDeclineInput {
+		w.input.SetWidth(max(1, w.width-len([]rune(w.prompt))-1))
 	}
-	return 80, 24
 }
 
 // listHeight is how many list rows fit: a third of the screen, at least
-// three, never more than there are items.
+// three, never more than there are items. The empty state occupies two rows.
 func (w *watcher) listHeight() int {
-	_, rows := w.size()
-	h := rows / 3
+	if len(w.items) == 0 {
+		return 2
+	}
+	h := w.height / 3
 	if h < 3 {
 		h = 3
 	}
@@ -368,28 +514,11 @@ func (w *watcher) listHeight() int {
 
 // paneHeight is the number of message lines that fit under the list.
 func (w *watcher) paneHeight() int {
-	_, rows := w.size()
-	h := rows - 1 - w.listHeight() - 1 - 2
-	if h < 1 {
-		h = 1
-	}
-	return h
+	return max(1, w.height-w.listHeight()-4)
 }
 
-const (
-	ansiReset   = "\x1b[0m"
-	ansiDim     = "\x1b[2m"
-	ansiBold    = "\x1b[1m"
-	ansiReverse = "\x1b[7m"
-	ansiClear   = "\x1b[2J\x1b[H"
-)
-
-func (w *watcher) render() {
-	cols, _ := w.size()
+func (w *watcher) View() tea.View {
 	now := w.app.Now()
-	var b strings.Builder
-	b.WriteString(ansiClear)
-
 	waiting, snoozed := 0, 0
 	for _, t := range w.items {
 		if t.Snoozed(now) {
@@ -398,18 +527,13 @@ func (w *watcher) render() {
 			waiting++
 		}
 	}
-	header := fmt.Sprintf("%sWORMHOLE INBOX%s  ^%s · %d waiting · %d snoozed · %s", ansiBold, ansiReset, w.cfg.Handle, waiting, snoozed, now.Format("15:04"))
-	b.WriteString(clip(header, cols+len(ansiBold)+len(ansiReset)) + "\r\n")
 
+	lines := []string{clip(fmt.Sprintf("WORMHOLE INBOX  ^%s · %d waiting · %d snoozed · %s", w.cfg.Handle, waiting, snoozed, now.Format("15:04")), w.width)}
 	if len(w.items) == 0 {
-		b.WriteString("\r\n  inbox empty; new messages appear here as they arrive\r\n")
+		lines = append(lines, "", "  inbox empty; new messages appear here as they arrive")
 	} else {
-		// Keep the selection in view.
 		h := w.listHeight()
-		first := 0
-		if w.sel >= h {
-			first = w.sel - h + 1
-		}
+		first := max(0, w.sel-h+1)
 		for i := first; i < first+h && i < len(w.items); i++ {
 			t := w.items[i]
 			kind := "ask"
@@ -421,65 +545,46 @@ func (w *watcher) render() {
 				when = "snoozed until " + t.SnoozedUntil.Local().Format("15:04")
 			}
 			id := t.ID
-			if cols < 120 {
-				id = string([]rune(id)[:10])
+			if w.width < 120 {
+				if r := []rune(id); len(r) > 10 {
+					id = string(r[:10])
+				}
 			}
-			where := t.Repo
-			row := fmt.Sprintf("  %s  %-12s %-6s %-22s %s  %s", id, "^"+t.Peer, kind, when, where, t.LastPreview)
-			row = clip(row, cols)
+			row := fmt.Sprintf("  %s  %-12s %-6s %-22s %s  %s", id, "^"+t.Peer, kind, when, t.Repo, t.LastPreview)
 			if i == w.sel {
-				row = ansiReverse + "▸" + row[len("  "):] + ansiReset
+				row = "▸" + row[len("  "):]
 			}
-			b.WriteString(row + "\r\n")
+			lines = append(lines, clip(row, w.width))
 		}
 	}
-	b.WriteString(ansiDim + strings.Repeat("─", cols) + ansiReset + "\r\n")
-
-	if t, ok := w.selected(); ok {
-		lines := wrapLines(t.StagedKickoff, cols)
-		pane := w.paneHeight()
-		if max := len(lines) - pane; w.scroll > max {
-			w.scroll = max
-		}
-		if w.scroll < 0 {
-			w.scroll = 0
-		}
-		// The fixed preamble, up to and including the --- line, is dimmed
-		// so the colleague's own words stand out.
-		preambleEnd := -1
-		for j, line := range lines {
-			if strings.TrimSpace(line) == "---" {
-				preambleEnd = j
-				break
-			}
-		}
-		for i := 0; i < pane; i++ {
-			j := w.scroll + i
-			if j >= len(lines) {
-				b.WriteString("\r\n")
-				continue
-			}
-			if j <= preambleEnd {
-				b.WriteString(ansiDim + lines[j] + ansiReset + "\r\n")
-			} else {
-				b.WriteString(lines[j] + "\r\n")
-			}
-		}
+	lines = append(lines, strings.Repeat("─", w.width))
+	if w.viewport.TotalLineCount() > 0 {
+		lines = append(lines, strings.Split(w.viewport.View(), "\n")...)
 	} else {
-		for i := 0; i < w.paneHeight(); i++ {
-			b.WriteString("\r\n")
-		}
+		lines = append(lines, strings.Repeat("\n", w.paneHeight()-1))
 	}
 
-	if w.input != nil {
-		b.WriteString(clip(w.input.prompt+string(w.input.buf), cols-1) + "▏\r\n")
-	} else {
-		b.WriteString(clip(w.status, cols) + "\r\n")
+	statusY := len(lines)
+	switch w.mode {
+	case watchSnoozeInput, watchDeclineInput:
+		lines = append(lines, clip(w.prompt+w.input.View(), w.width))
+	case watchOpenConfirm, watchDeclineConfirm:
+		lines = append(lines, clip(w.prompt+" [y/N] ", w.width))
+	default:
+		lines = append(lines, clip(w.status, w.width))
 	}
-	keys := fmt.Sprintf("%senter%s open with my tools  %sa%s hand to agent  %ss%s snooze  %sd%s decline  %sj/k%s move  %sJ/K%s scroll  %sq%s quit",
-		ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset)
-	b.WriteString(keys)
-	fmt.Fprint(w.out, b.String())
+	lines = append(lines, clip("enter open with my tools  a hand to agent  s snooze  d decline  j/k move  J/K scroll  q quit", w.width))
+
+	v := tea.NewView(strings.Join(lines, "\n"))
+	v.AltScreen = true
+	if w.mode == watchSnoozeInput || w.mode == watchDeclineInput {
+		if cursor := w.input.Cursor(); cursor != nil {
+			cursor.Position.X += len([]rune(w.prompt))
+			cursor.Position.Y += statusY
+			v.Cursor = cursor
+		}
+	}
+	return v
 }
 
 // clip cuts s to at most n runes, marking the cut with an ellipsis.
