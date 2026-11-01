@@ -255,7 +255,7 @@ func TestNonReleaseVersions(t *testing.T) {
 	if err := u.SetEnabled(true); err != nil {
 		t.Fatal(err)
 	}
-	for _, version := range []string{"", "dev", "DEV", "(devel)", "nightly", "1.0", "v1.2.3.4"} {
+	for _, version := range []string{"", "dev", "DEV", "(devel)", "nightly", "1.0", "v1.2.3.4", "v0.3.0-7-g439e102"} {
 		result, err := u.CheckAndUpdate(context.Background(), version)
 		if err != nil || result != (Result{}) {
 			t.Errorf("automatic %q: result %+v, err %v", version, result, err)
@@ -264,7 +264,7 @@ func TestNonReleaseVersions(t *testing.T) {
 	if len(f.paths()) != 0 {
 		t.Fatal("non-release automatic version made an HTTP request")
 	}
-	for _, version := range []string{"", "dev", "(devel)"} {
+	for _, version := range []string{"", "dev", "(devel)", "v0.3.0-7-g439e102"} {
 		if _, err := u.ForceUpdate(context.Background(), version); !errors.Is(err, ErrDevelopmentVersion) {
 			t.Errorf("manual %q error = %v", version, err)
 		}

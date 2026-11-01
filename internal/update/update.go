@@ -155,7 +155,7 @@ func (u *Updater) CheckAndUpdate(ctx context.Context, currentVersion string) (Re
 	if !u.state.Enabled || automaticChecksDisabled() {
 		return Result{}, nil
 	}
-	if _, err := parseSemanticVersion(currentVersion); err != nil {
+	if _, err := parseSemanticVersion(currentVersion); err != nil || strings.Contains(currentVersion, "-") {
 		return Result{}, nil
 	}
 	now := u.now()
@@ -176,7 +176,7 @@ func (u *Updater) ForceUpdate(ctx context.Context, currentVersion string) (Resul
 	defer u.mu.Unlock()
 
 	trimmed := strings.TrimSpace(currentVersion)
-	if trimmed == "" || strings.EqualFold(trimmed, "dev") || strings.EqualFold(trimmed, "(devel)") {
+	if trimmed == "" || strings.EqualFold(trimmed, "dev") || strings.EqualFold(trimmed, "(devel)") || strings.Contains(trimmed, "-") {
 		shown := trimmed
 		if shown == "" {
 			shown = "empty"
