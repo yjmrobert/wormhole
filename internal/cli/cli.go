@@ -50,12 +50,14 @@ type App struct {
 	// NewGHApp builds the Copilot wrapper.
 	NewGHApp func(cfg *config.Config) ghapp.App
 	// OpenStore opens the thread map.
-	OpenStore func() (*threads.Store, error)
-	Now       func() time.Time
-	Hostname  string
-	Version   string
-	Commit    string
-	BuildDate string
+	OpenStore  func() (*threads.Store, error)
+	NewUpdater func() (releaseUpdater, error)
+	Reexec     func() error
+	Now        func() time.Time
+	Hostname   string
+	Version    string
+	Commit     string
+	BuildDate  string
 }
 
 // Default returns an App wired to the real environment.
@@ -73,13 +75,15 @@ func Default() *App {
 			}
 			return natsbus.Connect(ctx, natsbus.Options{URL: cfg.Bus.URL, User: cfg.Handle, Creds: cfg.Bus.Creds, PasswordFile: cfg.Bus.PasswordFile, TLSCA: cfg.Bus.TLSCA})
 		},
-		NewGHApp:  func(cfg *config.Config) ghapp.App { return ghapp.NewExec(cfg.Copilot.Binary) },
-		OpenStore: func() (*threads.Store, error) { return threads.Open(config.ThreadsDBPath()) },
-		Now:       time.Now,
-		Hostname:  host,
-		Version:   "dev",
-		Commit:    "unknown",
-		BuildDate: "unknown",
+		NewGHApp:   func(cfg *config.Config) ghapp.App { return ghapp.NewExec(cfg.Copilot.Binary) },
+		OpenStore:  func() (*threads.Store, error) { return threads.Open(config.ThreadsDBPath()) },
+		NewUpdater: newReleaseUpdater,
+		Reexec:     reexecCurrentProcess,
+		Now:        time.Now,
+		Hostname:   host,
+		Version:    "dev",
+		Commit:     "unknown",
+		BuildDate:  "unknown",
 	}
 }
 
@@ -171,8 +175,9 @@ func noArgs(usage string) cobra.PositionalArgs {
 func (a *App) newRootCommand() (*cobra.Command, *common) {
 	c := &common{}
 	root := command("wormhole", "Open a wormhole between two Copilot sessions on two machines.")
-	root.Long = "Wormhole sends questions and replies between Copilot sessions on two machines.\nEvery command accepts --json and --config. Exit codes: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 unavailable."
+	root.Long = "Wormhole sends questions and replies between Copilot sessions on two machines.\nEvery command accepts --json, --config, and --no-input. Exit codes: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 unavailable."
 	root.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
+	root.PersistentPreRunE = a.runAutomaticUpdate(c)
 	root.SetOut(a.Stdout)
 	root.SetErr(a.Stderr)
 	root.CompletionOptions.DisableDefaultCmd = true
@@ -201,8 +206,10 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 		a.newCompletionCommand(),
 		a.newCommandsCommand(c),
 		a.newVersionCommand(c),
+		a.newUpdateCommand(c),
 		a.newManCommand(),
 	)
+	a.registerCompletions(root, c)
 	return root, c
 }
 
