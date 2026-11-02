@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/yjmrobert/wormhole/internal/config"
 	selfupdate "github.com/yjmrobert/wormhole/internal/update"
 )
+
+const automaticUpdateTimeout = 30 * time.Second
 
 type releaseUpdater interface {
 	CheckAndUpdate(context.Context, string) (selfupdate.Result, error)
@@ -24,13 +27,15 @@ func newReleaseUpdater() (releaseUpdater, error) {
 
 func (a *App) runAutomaticUpdate(c *common) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
-		if a.NewUpdater == nil || c.json || c.noInput || a.IsTerminal == nil || !a.IsTerminal() || updateExempt(cmd) {
+		if a.NewUpdater == nil || c.json || c.noInput || a.IsTerminal == nil || !a.IsTerminal() || updateExempt(cmd) || selfupdate.AutomaticChecksDisabled() {
 			return nil
 		}
 		u, err := a.NewUpdater()
 		if err == nil {
 			var res selfupdate.Result
-			res, err = u.CheckAndUpdate(cmd.Context(), a.Version)
+			ctx, cancel := context.WithTimeout(cmd.Context(), automaticUpdateTimeout)
+			res, err = u.CheckAndUpdate(ctx, a.Version)
+			cancel()
 			if err == nil && res.Updated {
 				fmt.Fprintf(a.Stderr, "wormhole: updated to %s; restarting the command\n", res.Tag)
 				if a.Reexec != nil {
@@ -81,6 +86,9 @@ func (a *App) newUpdateCommand(c *common) *cobra.Command {
 		}
 		if a.NewUpdater == nil {
 			return fail(ExitUnavailable, "self-update is not configured")
+		}
+		if enable && selfupdate.IsDevelopmentVersion(a.Version) {
+			return fail(ExitUnavailable, "automatic updates are unavailable for development build %q; use a tagged release", a.Version)
 		}
 		u, err := a.NewUpdater()
 		if err != nil {

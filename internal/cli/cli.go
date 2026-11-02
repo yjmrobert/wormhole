@@ -187,7 +187,7 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return fail(ExitUsage, "%v", err)
 	})
-	root.SetVersionTemplate(fmt.Sprintf("wormhole {{.Version}}\ncommit: %s\nbuild date: %s\n", a.commit(), a.buildDate()))
+	root.SetVersionTemplate(fmt.Sprintf("wormhole {{.Version}}\nbuild date: %s\n", a.buildDate()))
 	root.AddCommand(
 		a.newAskCommand(c),
 		a.newReplyCommand(c),

@@ -11,6 +11,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+// ask constructs a test ask with a deterministic host naming convention.
 func ask(from, to, body string) envelope.Envelope {
 	return envelope.NewAsk(envelope.Peer{User: from, Host: from + "-laptop"}, to, body, time.Now())
 }

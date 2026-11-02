@@ -95,6 +95,7 @@ type pageData struct {
 	Home bool
 }
 
+// main parses site-generation flags and builds the documentation once.
 func main() {
 	root := flag.String("root", ".", "repository root")
 	out := flag.String("out", "site", "output directory")

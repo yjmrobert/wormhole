@@ -86,8 +86,9 @@ Set `WORMHOLE_NO_UPDATE_CHECK=1` to suppress automatic checks without changing
 the saved setting. Development builds, `--json`, shell completion, command
 discovery, and the long-running daemon never trigger an automatic replacement.
 Update state lives in the Wormhole XDG state directory. If the executable's
-directory is not writable, the command leaves the current binary untouched and
-reports how to update it manually. Restart the daemon after updating its binary:
+directory is not writable, the command fails with a permission error and leaves
+the current binary untouched; reinstall it manually using the release steps in
+section 2. Restart the daemon after updating its binary:
 
 ```sh
 systemctl --user restart wormhole

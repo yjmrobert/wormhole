@@ -53,14 +53,22 @@ func (a *App) readSecret(c *common, prompt string) (string, error) {
 		if c.noInput {
 			return "", fail(ExitRefused, "--no-input forbids password prompts; use --password-file or provide credentials on stdin")
 		}
-		if out, ok := a.Stdout.(*os.File); ok && isTerminal(out) {
-			value := ""
-			field := huh.NewInput().Title(strings.TrimSpace(prompt)).EchoMode(huh.EchoModePassword).Value(&value)
-			if err := interactiveForm(in, out, field).Run(); err != nil {
-				return "", err
-			}
-			return strings.TrimSpace(value), nil
+		out, outOK := a.Stdout.(*os.File)
+		if !outOK || !isTerminal(out) {
+			fmt.Fprint(a.Stdout, prompt)
+			b, err := term.ReadPassword(int(in.Fd()))
+			fmt.Fprintln(a.Stdout)
+			return strings.TrimSpace(string(b)), err
 		}
+		value := ""
+		field := huh.NewInput().Title(strings.TrimSpace(prompt)).EchoMode(huh.EchoModePassword).Value(&value)
+		if err := interactiveForm(in, out, field).Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return "", fail(ExitRefused, "password prompt aborted")
+			}
+			return "", err
+		}
+		return strings.TrimSpace(value), nil
 	}
 	fmt.Fprint(a.Stdout, prompt)
 	r := bufio.NewReader(a.Stdin)

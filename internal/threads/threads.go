@@ -215,6 +215,7 @@ func (s *Store) Close() error { return s.db.Close() }
 
 const timeLayout = time.RFC3339
 
+// fmtTime encodes a timestamp in the database's canonical UTC format.
 func fmtTime(t time.Time) string { return t.UTC().Format(timeLayout) }
 
 func parseTime(s string) time.Time {

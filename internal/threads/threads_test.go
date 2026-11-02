@@ -13,6 +13,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+// open creates a temporary thread store and closes it after the test.
 func open(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(filepath.Join(t.TempDir(), "state", "threads.db"))

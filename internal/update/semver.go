@@ -12,10 +12,11 @@ type semanticVersion struct {
 	prerelease []string
 }
 
+// parseSemanticVersion parses a Semantic Versioning 2.0 version with an optional v prefix.
 func parseSemanticVersion(input string) (semanticVersion, error) {
 	var version semanticVersion
 	s := strings.TrimSpace(input)
-	s = strings.TrimPrefix(s, "v")
+	s = strings.TrimPrefix(s, versionPrefix)
 	if s == "" {
 		return version, fmt.Errorf("empty version")
 	}
@@ -45,6 +46,7 @@ func parseSemanticVersion(input string) (semanticVersion, error) {
 	return version, nil
 }
 
+// validIdentifiers validates dot-separated prerelease or build metadata identifiers.
 func validIdentifiers(s string, prerelease bool) bool {
 	if s == "" {
 		return false
@@ -65,6 +67,7 @@ func validIdentifiers(s string, prerelease bool) bool {
 	return true
 }
 
+// validNumericIdentifier rejects empty, non-numeric, and zero-padded numeric identifiers.
 func validNumericIdentifier(s string) bool {
 	if s == "" || (len(s) > 1 && s[0] == '0') {
 		return false
@@ -72,6 +75,7 @@ func validNumericIdentifier(s string) bool {
 	return isNumeric(s)
 }
 
+// isNumeric reports whether every rune in a non-empty string is an ASCII digit.
 func isNumeric(s string) bool {
 	if s == "" {
 		return false
@@ -84,6 +88,7 @@ func isNumeric(s string) bool {
 	return true
 }
 
+// compareSemanticVersions returns -1, 0, or 1 according to Semantic Versioning precedence.
 func compareSemanticVersions(a, b semanticVersion) int {
 	for _, pair := range [][2]string{{a.major, b.major}, {a.minor, b.minor}, {a.patch, b.patch}} {
 		if cmp := compareNumeric(pair[0], pair[1]); cmp != 0 {
@@ -124,6 +129,7 @@ func compareSemanticVersions(a, b semanticVersion) int {
 	}
 }
 
+// compareNumeric compares unsigned decimal integers without converting them to machine integers.
 func compareNumeric(a, b string) int {
 	switch {
 	case len(a) < len(b):

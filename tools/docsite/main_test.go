@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// TestBuildSite verifies rendered pages, links, assets, and search metadata.
 func TestBuildSite(t *testing.T) {
 	out := t.TempDir()
 	root := filepath.Join("..", "..")

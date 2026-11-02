@@ -13,6 +13,7 @@ type SecretMatch struct {
 	Offset int
 }
 
+// String describes the match location without exposing the matched secret.
 func (m SecretMatch) String() string {
 	return fmt.Sprintf("%s at byte %d", m.Kind, m.Offset)
 }

@@ -127,6 +127,7 @@ func Connect(ctx context.Context, o Options) (*Bus, error) {
 	return &Bus{nc: nc, js: js, user: o.User, log: o.Log, inflight: map[bus.MessageID]jetstream.Msg{}, ackWait: aw}, nil
 }
 
+// redact removes user information from a NATS URL before logging errors.
 func redact(url string) string {
 	if i := strings.Index(url, "@"); i >= 0 {
 		if j := strings.Index(url, "://"); j >= 0 && j < i {

@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// write creates a test file with the requested permissions and returns its path.
 func write(t *testing.T, dir, name, content string, mode os.FileMode) string {
 	t.Helper()
 	p := filepath.Join(dir, name)

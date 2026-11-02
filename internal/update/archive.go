@@ -12,6 +12,7 @@ import (
 	"strings"
 )
 
+// installArchive validates an update archive and atomically replaces the executable.
 func installArchive(archivePath, executablePath string) (bool, error) {
 	archive, err := os.Open(archivePath)
 	if err != nil {
@@ -51,7 +52,7 @@ func installArchive(archivePath, executablePath string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if name != "wormhole" {
+		if name != binaryName {
 			continue
 		}
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
@@ -60,8 +61,12 @@ func installArchive(archivePath, executablePath string) (bool, error) {
 		if found {
 			return false, errors.New("archive contains duplicate wormhole members")
 		}
-		if _, err := io.Copy(staged, reader); err != nil {
+		n, err := io.Copy(staged, io.LimitReader(reader, maxBinarySize+1))
+		if err != nil {
 			return false, err
+		}
+		if n > maxBinarySize {
+			return false, fmt.Errorf("archive member %s exceeds %d bytes", binaryName, maxBinarySize)
 		}
 		found = true
 	}
@@ -87,6 +92,7 @@ func installArchive(archivePath, executablePath string) (bool, error) {
 	return true, nil
 }
 
+// cleanMemberName rejects absolute paths and traversal in an archive member name.
 func cleanMemberName(name string) (string, error) {
 	if name == "" || path.IsAbs(name) {
 		return "", fmt.Errorf("archive contains unsafe member name %q", name)
@@ -99,6 +105,7 @@ func cleanMemberName(name string) (string, error) {
 	return path.Clean(name), nil
 }
 
+// syncDir flushes directory metadata so a completed rename survives a crash.
 func syncDir(path string) error {
 	dir, err := os.Open(path)
 	if err != nil {

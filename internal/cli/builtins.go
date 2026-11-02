@@ -128,7 +128,7 @@ func describeCommand(cmd *cobra.Command, root, withFlags bool) commandInfo {
 				Default:    f.DefValue,
 				Usage:      f.Usage,
 				Required:   required,
-				Persistent: cmd.PersistentFlags().Lookup(f.Name) != nil,
+				Persistent: cmd.PersistentFlags().Lookup(f.Name) != nil || cmd.InheritedFlags().Lookup(f.Name) != nil,
 			})
 		})
 		if info.Flags == nil {

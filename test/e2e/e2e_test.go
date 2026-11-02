@@ -39,6 +39,7 @@ type side struct {
 	session string // the Copilot session the CLI pretends to run in
 }
 
+// cli invokes one side's CLI with JSON output and decodes the result.
 func (s *side) cli(t *testing.T, stdin string, args ...string) (int, map[string]any, string) {
 	t.Helper()
 	var out, errb bytes.Buffer

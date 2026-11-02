@@ -15,10 +15,12 @@ type state struct {
 	LastCheck time.Time `json:"last_check"`
 }
 
+// statePath returns the persistent state file within the configured directory.
 func (u *Updater) statePath() string {
 	return filepath.Join(u.stateDir, stateFileName)
 }
 
+// loadState restores preferences and rejects malformed or non-regular state files.
 func (u *Updater) loadState() error {
 	if err := secureStateDir(u.stateDir); err != nil {
 		return err
@@ -47,6 +49,7 @@ func (u *Updater) loadState() error {
 	return nil
 }
 
+// saveState atomically persists state with owner-only file permissions.
 func (u *Updater) saveState() error {
 	if err := secureStateDir(u.stateDir); err != nil {
 		return err
@@ -87,6 +90,7 @@ func (u *Updater) saveState() error {
 	return syncDir(u.stateDir)
 }
 
+// secureStateDir creates the state directory and restricts it to its owner.
 func secureStateDir(path string) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return fmt.Errorf("create update state directory: %w", err)

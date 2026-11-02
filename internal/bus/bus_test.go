@@ -7,6 +7,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+// TestSubjects verifies subject construction and envelope-based routing.
 func TestSubjects(t *testing.T) {
 	if got := InboxSubject("bob", "alice"); got != "wh.inbox.bob.alice" {
 		t.Fatal(got)

@@ -282,6 +282,7 @@ func Parse(raw []byte) (*Config, error) {
 	return &cfg, nil
 }
 
+// applyDefaults fills omitted settings and expands configured home paths.
 func (c *Config) applyDefaults() {
 	if c.Bus.Kind == "" {
 		c.Bus.Kind = DefaultBusKind

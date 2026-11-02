@@ -79,6 +79,7 @@ func NewBroker(opts ...Option) *Broker {
 	return b
 }
 
+// queueFor returns user's durable queue, creating it on first use.
 func (b *Broker) queueFor(user string) *queue {
 	q, ok := b.queues[user]
 	if !ok {

@@ -9,6 +9,7 @@ import (
 
 var now = time.Date(2026, 10, 29, 15, 44, 52, 0, time.UTC)
 
+// alice returns the standard originating peer used by envelope tests.
 func alice() Peer {
 	return Peer{User: "alice", Host: "alice-laptop", SessionID: "d29557f4-0000-4000-8000-000000000000"}
 }

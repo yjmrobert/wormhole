@@ -24,9 +24,17 @@ const (
 	// CheckInterval is the minimum time between automatic check attempts.
 	CheckInterval = 24 * time.Hour
 
-	defaultOwner   = "yjmrobert"
-	defaultRepo    = "wormhole"
-	defaultAPIBase = "https://api.github.com"
+	defaultOwner          = "yjmrobert"
+	defaultRepo           = binaryName
+	defaultAPIBase        = "https://api.github.com"
+	binaryName            = "wormhole"
+	maxBinarySize         = 256 << 20
+	checksumsFileName     = "checksums.txt"
+	developmentVersion    = "dev"
+	developmentVersionAlt = "(devel)"
+	noUpdateCheckEnv      = "WORMHOLE_NO_UPDATE_CHECK"
+	userAgent             = "wormhole-self-update"
+	versionPrefix         = "v"
 )
 
 var (
@@ -152,10 +160,13 @@ func (u *Updater) CheckAndUpdate(ctx context.Context, currentVersion string) (Re
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	if !u.state.Enabled || automaticChecksDisabled() {
+	if !u.state.Enabled || AutomaticChecksDisabled() {
 		return Result{}, nil
 	}
-	if _, err := parseSemanticVersion(currentVersion); err != nil || strings.Contains(currentVersion, "-") {
+	if IsDevelopmentVersion(currentVersion) {
+		return Result{}, nil
+	}
+	if _, err := parseSemanticVersion(currentVersion); err != nil {
 		return Result{}, nil
 	}
 	now := u.now()
@@ -176,7 +187,7 @@ func (u *Updater) ForceUpdate(ctx context.Context, currentVersion string) (Resul
 	defer u.mu.Unlock()
 
 	trimmed := strings.TrimSpace(currentVersion)
-	if trimmed == "" || strings.EqualFold(trimmed, "dev") || strings.EqualFold(trimmed, "(devel)") || strings.Contains(trimmed, "-") {
+	if IsDevelopmentVersion(trimmed) {
 		shown := trimmed
 		if shown == "" {
 			shown = "empty"
@@ -189,11 +200,19 @@ func (u *Updater) ForceUpdate(ctx context.Context, currentVersion string) (Resul
 	return u.checkAndUpdate(ctx, currentVersion)
 }
 
-func automaticChecksDisabled() bool {
-	value := strings.TrimSpace(os.Getenv("WORMHOLE_NO_UPDATE_CHECK"))
+// AutomaticChecksDisabled reports whether the environment suppresses automatic checks.
+func AutomaticChecksDisabled() bool {
+	value := strings.TrimSpace(os.Getenv(noUpdateCheckEnv))
 	return value != "" && value != "0" && !strings.EqualFold(value, "false")
 }
 
+// IsDevelopmentVersion reports whether a version cannot be ordered against releases.
+func IsDevelopmentVersion(version string) bool {
+	trimmed := strings.TrimSpace(version)
+	return trimmed == "" || strings.EqualFold(trimmed, developmentVersion) || strings.EqualFold(trimmed, developmentVersionAlt) || strings.Contains(trimmed, "-")
+}
+
+// checkAndUpdate downloads and installs a newer release after validating its metadata and checksum.
 func (u *Updater) checkAndUpdate(ctx context.Context, currentVersion string) (Result, error) {
 	current, _ := parseSemanticVersion(currentVersion)
 	result := Result{Checked: true}
@@ -206,7 +225,7 @@ func (u *Updater) checkAndUpdate(ctx context.Context, currentVersion string) (Re
 	if err != nil {
 		return result, fmt.Errorf("latest release tag %q is not semantic version: %w", release.TagName, err)
 	}
-	result.Latest = strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+	result.Latest = strings.TrimPrefix(strings.TrimSpace(release.TagName), versionPrefix)
 	if compareSemanticVersions(current, latest) >= 0 {
 		return result, nil
 	}
@@ -217,12 +236,12 @@ func (u *Updater) checkAndUpdate(ctx context.Context, currentVersion string) (Re
 	if err != nil {
 		return result, err
 	}
-	archiveName := "wormhole_" + result.Latest + "_" + u.goos + "_" + u.goarch + ".tar.gz"
+	archiveName := binaryName + "_" + result.Latest + "_" + u.goos + "_" + u.goarch + ".tar.gz"
 	archiveURL, err := release.assetURL(archiveName)
 	if err != nil {
 		return result, err
 	}
-	checksumsURL, err := release.assetURL("checksums.txt")
+	checksumsURL, err := release.assetURL(checksumsFileName)
 	if err != nil {
 		return result, err
 	}
@@ -268,6 +287,7 @@ type asset struct {
 	URL  string `json:"browser_download_url"`
 }
 
+// assetURL returns the unique HTTP(S) download URL for a named release asset.
 func (r release) assetURL(name string) (string, error) {
 	var found string
 	for _, a := range r.Assets {
@@ -289,6 +309,7 @@ func (r release) assetURL(name string) (string, error) {
 	return found, nil
 }
 
+// latestRelease fetches and validates the repository's latest stable release metadata.
 func (u *Updater) latestRelease(ctx context.Context) (release, error) {
 	endpoint := u.apiBase + "/repos/" + url.PathEscape(u.owner) + "/" + url.PathEscape(u.repo) + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -296,7 +317,7 @@ func (u *Updater) latestRelease(ctx context.Context) (release, error) {
 		return release{}, fmt.Errorf("create release request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "wormhole-self-update")
+	req.Header.Set("User-Agent", userAgent)
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return release{}, fmt.Errorf("check latest release: %w", err)
@@ -316,6 +337,7 @@ func (u *Updater) latestRelease(ctx context.Context) (release, error) {
 	return r, nil
 }
 
+// downloadBytes retrieves a response body while enforcing a maximum size.
 func (u *Updater) downloadBytes(ctx context.Context, source string, limit int64) ([]byte, error) {
 	resp, err := u.get(ctx, source)
 	if err != nil {
@@ -332,6 +354,7 @@ func (u *Updater) downloadBytes(ctx context.Context, source string, limit int64)
 	return body, nil
 }
 
+// downloadArchive streams an archive to dst and returns its SHA-256 digest.
 func (u *Updater) downloadArchive(ctx context.Context, source string, dst *os.File) (string, error) {
 	resp, err := u.get(ctx, source)
 	if err != nil {
@@ -339,8 +362,12 @@ func (u *Updater) downloadArchive(ctx context.Context, source string, dst *os.Fi
 	}
 	defer resp.Body.Close()
 	hash := sha256.New()
-	if _, err := io.Copy(dst, io.TeeReader(resp.Body, hash)); err != nil {
+	n, err := io.Copy(dst, io.TeeReader(io.LimitReader(resp.Body, maxBinarySize+1), hash))
+	if err != nil {
 		return "", err
+	}
+	if n > maxBinarySize {
+		return "", fmt.Errorf("archive exceeds %d bytes", maxBinarySize)
 	}
 	if err := dst.Close(); err != nil {
 		return "", err
@@ -348,12 +375,13 @@ func (u *Updater) downloadArchive(ctx context.Context, source string, dst *os.Fi
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
+// get performs an update download request and requires a successful HTTP response.
 func (u *Updater) get(ctx context.Context, source string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "wormhole-self-update")
+	req.Header.Set("User-Agent", userAgent)
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -365,6 +393,7 @@ func (u *Updater) get(ctx context.Context, source string) (*http.Response, error
 	return resp, nil
 }
 
+// executable resolves the configured or running executable and requires a regular file.
 func (u *Updater) executable() (string, error) {
 	name := u.exePath
 	if name == "" {
@@ -388,6 +417,7 @@ func (u *Updater) executable() (string, error) {
 	return resolved, nil
 }
 
+// checksumFor finds and validates the unique SHA-256 entry for an archive.
 func checksumFor(data []byte, name string) (string, error) {
 	var found string
 	for _, line := range strings.Split(string(data), "\n") {

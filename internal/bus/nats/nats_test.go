@@ -65,6 +65,7 @@ func startServer(t *testing.T) (url string) {
 	return srv.ClientURL()
 }
 
+// connect opens a test bus using the user's shipped example credentials.
 func connect(t *testing.T, url, user string) *Bus {
 	t.Helper()
 	b, err := Connect(context.Background(), Options{URL: url, User: user, Password: "CHANGE_ME_" + user, AckWait: 2 * time.Second})

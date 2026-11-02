@@ -156,7 +156,10 @@ type RunError struct {
 	Output string
 }
 
+// Error reports the failed command and exit error without captured output.
 func (e *RunError) Error() string { return e.Cmd + ": " + e.Err.Error() }
+
+// Unwrap exposes the underlying process error for errors.Is and errors.As.
 func (e *RunError) Unwrap() error { return e.Err }
 
 // Check verifies the copilot binary is on PATH.
