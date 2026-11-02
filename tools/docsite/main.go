@@ -408,7 +408,7 @@ func starField(seed int64) template.HTML {
 // hero draws the home page opener: a wireframe floor in perspective that sags
 // into a well under the wormhole on the horizon, with the terminal cards and
 // the orb that spirals in. The geometry is computed here, once; the browser
-// only animates the ring and the orb.
+// only animates the ring and the orb, each on a layer of its own.
 func hero() template.HTML {
 	const w, h, nx, ny = 1600, 700, 36, 16
 	point := func(i, j int) (float64, float64) {
@@ -440,6 +440,11 @@ func hero() template.HTML {
 		}
 		b.WriteString(`"/>`)
 	}
+	b.WriteString(`</svg>`)
+	// The orb rides in its own SVG, on its own layer, with the same box as the
+	// mesh. Inside the mesh, every frame of its motion repainted the whole
+	// filtered grid, and the thin lines shimmered as they were re-rasterized.
+	fmt.Fprintf(&b, `<svg class="hero-orb" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMax slice" focusable="false">`, w, h)
 	b.WriteString(`<circle class="orb" r="5"><animateMotion dur="11s" repeatCount="indefinite" path="M1560 520 C 1300 440, 1050 470, 960 520 C 880 565, 720 575, 700 540 C 690 515, 760 500, 800 520 C 830 535, 820 560, 800 560"/></circle></svg>`)
 	b.WriteString(`<div class="hero-haze"></div><div class="hero-floor"></div>`)
 	b.WriteString(`<div class="hero-term hero-term-a">$ wormhole ask bob <span class="c">"what do you think about X"</span><br><span class="m">thread</span> 01JB7Q open</div>`)
