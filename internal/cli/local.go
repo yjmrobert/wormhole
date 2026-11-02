@@ -30,14 +30,15 @@ type inboxItem struct {
 	Text string `json:"text"`
 }
 
+// inboxItemOf converts a stored thread into the inbox output schema.
 func inboxItemOf(t threads.Thread) inboxItem {
 	kind := "ask"
 	if t.Direction == threads.DirectionOut {
 		kind = "reply"
 	}
-	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format("2006-01-02T15:04:05Z"), Repo: t.Repo, Text: t.StagedKickoff}
+	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format(utcTimestampLayout), Repo: t.Repo, Text: t.StagedKickoff}
 	if !t.SnoozedUntil.IsZero() {
-		it.SnoozedUntil = t.SnoozedUntil.UTC().Format("2006-01-02T15:04:05Z")
+		it.SnoozedUntil = t.SnoozedUntil.UTC().Format(utcTimestampLayout)
 	}
 	return it
 }
@@ -60,6 +61,7 @@ func (a *App) staged(ctx context.Context, store *threads.Store, all bool) ([]thr
 	return out, nil
 }
 
+// newInboxCommand lists staged messages or opens an interactive inbox view.
 func (a *App) newInboxCommand(c *common) *cobra.Command {
 	var watch, ui, all bool
 	cmd := command("inbox", "List staged messages waiting for review")
@@ -274,6 +276,7 @@ func (a *App) openThread(ctx context.Context, c *common, cfg *config.Config, sto
 	return out, nil
 }
 
+// newThreadsCommand lists and filters locally stored threads.
 func (a *App) newThreadsCommand(c *common) *cobra.Command {
 	var open bool
 	var peer string
@@ -330,6 +333,7 @@ type userRow struct {
 	Online bool `json:"online"`
 }
 
+// newUsersCommand lists registered handles and their presence.
 func (a *App) newUsersCommand(c *common) *cobra.Command {
 	cmd := command("users", "List handles registered on the bus")
 	cmd.Args = noArgs("wormhole users")

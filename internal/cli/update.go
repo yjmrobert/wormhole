@@ -21,10 +21,12 @@ type releaseUpdater interface {
 	SetEnabled(bool) error
 }
 
+// newReleaseUpdater constructs the GitHub-backed release updater.
 func newReleaseUpdater() (releaseUpdater, error) {
 	return selfupdate.New(selfupdate.Options{StateDir: config.StateDir()})
 }
 
+// runAutomaticUpdate performs eligible opt-in updates before a command runs.
 func (a *App) runAutomaticUpdate(c *common) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
 		if a.NewUpdater == nil || c.json || c.noInput || a.IsTerminal == nil || !a.IsTerminal() || updateExempt(cmd) || selfupdate.AutomaticChecksDisabled() {
@@ -50,6 +52,7 @@ func (a *App) runAutomaticUpdate(c *common) func(*cobra.Command, []string) error
 	}
 }
 
+// updateExempt reports whether a command must never trigger an automatic update.
 func updateExempt(cmd *cobra.Command) bool {
 	if cmd == cmd.Root() {
 		return true
@@ -74,6 +77,7 @@ type updateOutput struct {
 	Updated bool   `json:"updated"`
 }
 
+// newUpdateCommand installs updates and controls automatic-check preferences.
 func (a *App) newUpdateCommand(c *common) *cobra.Command {
 	var enable, disable bool
 	cmd := command("update", "Install a newer release or control automatic checks")

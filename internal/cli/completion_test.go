@@ -11,6 +11,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
+// TestThreadCompletionUsesLocalStore verifies thread IDs and titles come from storage.
 func TestThreadCompletionUsesLocalStore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "threads.db")
 	store, err := threads.Open(path)

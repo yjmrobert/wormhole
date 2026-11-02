@@ -26,6 +26,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
+// newDaemonCommand runs or controls the message subscriber.
 func (a *App) newDaemonCommand(c *common) *cobra.Command {
 	var once, pause, resume, verbose bool
 	cmd := command("daemon", "Run the message subscriber")
@@ -70,7 +71,7 @@ func (a *App) newDaemonCommand(c *common) *cobra.Command {
 		defer store.Close()
 		b, err := a.NewBus(ctx, cfg)
 		if err != nil {
-			return fail(ExitUnavailable, "bus: %v", err)
+			return fail(ExitUnavailable, busErrorFormat, err)
 		}
 		defer b.Close()
 		app := a.NewGHApp(cfg)
@@ -155,12 +156,16 @@ type idleTimer struct {
 	d time.Duration
 }
 
+// newIdleTimer starts a timer that cancels after a period without activity.
 func newIdleTimer(d time.Duration, cancel func()) *idleTimer {
 	return &idleTimer{t: time.AfterFunc(d, cancel), d: d}
 }
 
+// touch restarts the idle timeout after handled activity.
 func (i *idleTimer) touch() { i.t.Reset(i.d) }
-func (i *idleTimer) stop()  { i.t.Stop() }
+
+// stop releases the idle timer.
+func (i *idleTimer) stop() { i.t.Stop() }
 
 // check is one doctor result.
 type check struct {
@@ -170,6 +175,7 @@ type check struct {
 	Hint   string `json:"hint,omitempty"`
 }
 
+// newDoctorCommand checks configuration, connectivity, and desktop integrations.
 func (a *App) newDoctorCommand(c *common) *cobra.Command {
 	var deepLink bool
 	cmd := command("doctor", "Check configuration and local integrations")
@@ -300,6 +306,7 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// doctorReport emits health checks and fails when any check is unhealthy.
 func (a *App) doctorReport(c *common, checks []check) error {
 	allOK := true
 	for _, ch := range checks {
@@ -391,6 +398,7 @@ func (a *App) newLoginCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// newInitCommand writes a starter configuration outside Git worktrees.
 func (a *App) newInitCommand(c *common) *cobra.Command {
 	var force bool
 	cmd := command("init", "Write a starter configuration")
@@ -423,6 +431,7 @@ func (a *App) newInitCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// newAdminCommand constructs NATS administration commands.
 func (a *App) newAdminCommand(c *common) *cobra.Command {
 	admin := command("admin", "Administer the NATS bus")
 	admin.RunE = func(_ *cobra.Command, _ []string) error {

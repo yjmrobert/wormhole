@@ -12,10 +12,12 @@ import (
 	"golang.org/x/term"
 )
 
+// isTerminal reports whether the file is attached to a terminal.
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
+// interactiveForm builds a form with explicit streams and NO_COLOR support.
 func interactiveForm(input io.Reader, output io.Writer, fields ...huh.Field) *huh.Form {
 	form := huh.NewForm(huh.NewGroup(fields...)).WithInput(input).WithOutput(output)
 	if os.Getenv("NO_COLOR") != "" {

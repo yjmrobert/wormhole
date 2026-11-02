@@ -38,6 +38,7 @@ type sendResult struct {
 	PeerOnline    *bool  `json:"peer_online,omitempty"`
 }
 
+// me constructs the local peer identity for an outbound envelope.
 func (a *App) me(cfg *config.Config) envelope.Peer {
 	return envelope.Peer{User: cfg.Handle, Host: a.Hostname, SessionID: a.Getenv(SessionEnv)}
 }
@@ -67,7 +68,7 @@ func (a *App) review(c *common, e envelope.Envelope, yes bool) (bool, error) {
 		return false, nil
 	}
 	if c.noInput {
-		return false, fail(ExitRefused, "--no-input forbids confirmation prompts; review the message and rerun with --yes")
+		return false, fail(ExitRefused, noInputReviewMessage)
 	}
 	if !a.IsTerminal() {
 		return false, fail(ExitRefused, "not a terminal: show the message to the person, then rerun with --yes")
@@ -130,6 +131,7 @@ func (a *App) publish(ctx context.Context, c *common, cfg *config.Config, store 
 	return nil
 }
 
+// newAskCommand constructs the command that opens a thread.
 func (a *App) newAskCommand(c *common) *cobra.Command {
 	var repo, ref, skillV, session string
 	var yes, force bool
@@ -240,6 +242,7 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 	return a.publish(ctx, c, cfg, store, e, t)
 }
 
+// newReplyCommand constructs the command that replies to an existing thread.
 func (a *App) newReplyCommand(c *common) *cobra.Command {
 	var yes, force bool
 	var skillV string
@@ -254,6 +257,7 @@ func (a *App) newReplyCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// newSendCommand constructs the command that sends a follow-up to a peer.
 func (a *App) newSendCommand(c *common) *cobra.Command {
 	var thread, skillV string
 	var yes, force bool

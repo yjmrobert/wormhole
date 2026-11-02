@@ -36,6 +36,18 @@ const (
 	ExitUnavailable = 5 // bus or app unreachable
 )
 
+const (
+	unknownMetadata       = "unknown"
+	utcTimestampLayout    = "2006-01-02T15:04:05Z"
+	invalidThreadIDFormat = "%q is not a thread id"
+	invalidHandleFormat   = "%q is not a valid handle"
+	threadNotFoundFormat  = "thread %s is not on this machine"
+	busErrorFormat        = "bus: %v"
+	noInputReviewMessage  = "--no-input forbids confirmation prompts; review the message and rerun with --yes"
+	notStartedMessage     = "not started; it stays in the inbox"
+	notDeclinedMessage    = "not declined; it stays in the inbox"
+)
+
 // App holds the command's collaborators so tests can substitute them.
 type App struct {
 	Stdin  io.Reader
@@ -93,13 +105,18 @@ type exitError struct {
 	err  error
 }
 
+// Error returns the underlying command error message.
 func (e *exitError) Error() string { return e.err.Error() }
+
+// Unwrap exposes the underlying command error.
 func (e *exitError) Unwrap() error { return e.err }
 
+// fail constructs a command error with a stable process exit code.
 func fail(code int, format string, args ...any) error {
 	return &exitError{code: code, err: fmt.Errorf(format, args...)}
 }
 
+// wrap assigns an exit code unless err already carries one.
 func wrap(code int, err error) error {
 	if err == nil {
 		return nil
@@ -118,6 +135,7 @@ type common struct {
 	noInput bool
 }
 
+// loadConfig loads the selected configuration and maps failures to exit codes.
 func (a *App) loadConfig(c *common) (*config.Config, error) {
 	path := c.config
 	if path == "" {
@@ -144,12 +162,14 @@ func (a *App) emit(c *common, v any, human func(w io.Writer)) {
 	human(a.Stdout)
 }
 
+// command constructs a command with Wormhole's consistent flag behavior.
 func command(use, short string) *cobra.Command {
 	cmd := &cobra.Command{Use: use, Short: short, DisableFlagsInUseLine: true}
 	cmd.Flags().SetInterspersed(true)
 	return cmd
 }
 
+// exactArgs validates an exact positional argument count.
 func exactArgs(n int, usage string) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) != n {
@@ -159,6 +179,7 @@ func exactArgs(n int, usage string) cobra.PositionalArgs {
 	}
 }
 
+// rangeArgs validates an inclusive positional argument range.
 func rangeArgs(min, max int, usage string) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) < min || len(args) > max {
@@ -168,10 +189,12 @@ func rangeArgs(min, max int, usage string) cobra.PositionalArgs {
 	}
 }
 
+// noArgs rejects all positional arguments.
 func noArgs(usage string) cobra.PositionalArgs {
 	return exactArgs(0, usage)
 }
 
+// newRootCommand assembles the complete Wormhole command tree.
 func (a *App) newRootCommand() (*cobra.Command, *common) {
 	c := &common{}
 	root := command("wormhole", "Open a wormhole between two Copilot sessions on two machines.")
@@ -213,6 +236,7 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 	return root, c
 }
 
+// commit returns the commit metadata or its stable unknown fallback.
 func (a *App) commit() string {
 	if a.Commit == "" {
 		return "unknown"
@@ -220,6 +244,7 @@ func (a *App) commit() string {
 	return a.Commit
 }
 
+// buildDate returns the build timestamp or its stable unknown fallback.
 func (a *App) buildDate() string {
 	if a.BuildDate == "" {
 		return "unknown"
@@ -227,10 +252,12 @@ func (a *App) buildDate() string {
 	return a.BuildDate
 }
 
+// printVersion writes human-readable version and build metadata.
 func (a *App) printVersion(w io.Writer) {
 	fmt.Fprintf(w, "wormhole %s\ncommit: %s\nbuild date: %s\n", a.Version, a.commit(), a.buildDate())
 }
 
+// jsonRequested detects JSON output before Cobra parses the arguments.
 func jsonRequested(args []string) bool {
 	for _, arg := range args {
 		if arg == "--" {
@@ -299,6 +326,7 @@ func (a *App) readText(arg string) (string, error) {
 	return strings.TrimRight(string(b), "\n"), nil
 }
 
+// ago formats a timestamp as a compact duration relative to now.
 func ago(t time.Time, now time.Time) string {
 	if t.IsZero() {
 		return "-"
@@ -316,6 +344,7 @@ func ago(t time.Time, now time.Time) string {
 	}
 }
 
+// table writes aligned tabular output.
 func table(w io.Writer, header []string, rows [][]string) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, strings.Join(header, "\t"))
@@ -325,6 +354,7 @@ func table(w io.Writer, header []string, rows [][]string) {
 	_ = tw.Flush()
 }
 
+// sortedKeys returns map keys in deterministic lexical order.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

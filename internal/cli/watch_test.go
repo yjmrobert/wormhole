@@ -57,14 +57,17 @@ func newWatcher(t *testing.T) (*watcher, []envelope.Envelope) {
 	return w, asks
 }
 
+// watchRune constructs a printable key event.
 func watchRune(r rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: r, Text: string(r)}
 }
 
+// watchCode constructs a special key event.
 func watchCode(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: code}
 }
 
+// pressWatch applies an event and verifies stable model identity.
 func pressWatch(w *watcher, msg tea.Msg) tea.Cmd {
 	model, cmd := w.Update(msg)
 	if model != w {
@@ -73,6 +76,7 @@ func pressWatch(w *watcher, msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// runWatchCmd executes an asynchronous command and applies its result.
 func runWatchCmd(t *testing.T, w *watcher, cmd tea.Cmd) tea.Cmd {
 	t.Helper()
 	if cmd == nil {
@@ -81,6 +85,7 @@ func runWatchCmd(t *testing.T, w *watcher, cmd tea.Cmd) tea.Cmd {
 	return pressWatch(w, cmd())
 }
 
+// TestWatchRender verifies list, detail, and status rendering.
 func TestWatchRender(t *testing.T) {
 	w, asks := newWatcher(t)
 	v := w.View()
@@ -162,6 +167,7 @@ func TestWatchRender(t *testing.T) {
 	}
 }
 
+// TestWatchEmpty verifies safe navigation and actions with no messages.
 func TestWatchEmpty(t *testing.T) {
 	w, _ := newWatcher(t)
 	w.setItems(nil)
@@ -175,6 +181,7 @@ func TestWatchEmpty(t *testing.T) {
 	}
 }
 
+// TestWatchTextInputAndConfirm verifies input editing, cancellation, and conservative confirmation defaults.
 func TestWatchTextInputAndConfirm(t *testing.T) {
 	w, _ := newWatcher(t)
 	pressWatch(w, watchRune('s'))
@@ -210,6 +217,7 @@ func TestWatchTextInputAndConfirm(t *testing.T) {
 	}
 }
 
+// TestWatchSnoozeAndDeclineFlows exercises snoozing and both declined-confirmation outcomes.
 func TestWatchSnoozeAndDeclineFlows(t *testing.T) {
 	w, asks := newWatcher(t)
 	ctx := context.Background()
@@ -265,6 +273,7 @@ func TestWatchSnoozeAndDeclineFlows(t *testing.T) {
 	}
 }
 
+// TestWatchOpenReleasesAndRestoresTerminal verifies terminal handoff on successful and failed opens.
 func TestWatchOpenReleasesAndRestoresTerminal(t *testing.T) {
 	w, asks := newWatcher(t)
 	var calls []string
@@ -312,6 +321,7 @@ func TestWatchOpenReleasesAndRestoresTerminal(t *testing.T) {
 	}
 }
 
+// TestWatchRefreshKeepsSelection verifies stable selection and scroll across list refreshes.
 func TestWatchRefreshKeepsSelection(t *testing.T) {
 	w, asks := newWatcher(t)
 	pressWatch(w, watchRune('j'))
@@ -343,6 +353,7 @@ func TestWatchRefreshKeepsSelection(t *testing.T) {
 	}
 }
 
+// TestParseSnooze checks accepted durations, defaults, reset values, and invalid input.
 func TestParseSnooze(t *testing.T) {
 	def := 2 * time.Hour
 	for in, want := range map[string]time.Duration{"": def, "off": 0, "0": 0, "45m": 45 * time.Minute, "3h": 3 * time.Hour, "1d": 24 * time.Hour} {
@@ -357,6 +368,7 @@ func TestParseSnooze(t *testing.T) {
 	}
 }
 
+// TestClipAndWrap verifies Unicode-aware clipping and fixed-width line wrapping.
 func TestClipAndWrap(t *testing.T) {
 	if clip("héllo", 3) != "hé…" || clip("hi", 5) != "hi" || clip("hi", 1) != "…" {
 		t.Fatal("clip")
@@ -366,6 +378,7 @@ func TestClipAndWrap(t *testing.T) {
 	}
 }
 
+// TestTrayState verifies that pending asks become tray items and pause state changes the fingerprint.
 func TestTrayState(t *testing.T) {
 	w, asks := newWatcher(t)
 	s, err := trayState(context.Background(), w.store, w.app.Now())
@@ -381,4 +394,5 @@ func TestTrayState(t *testing.T) {
 	}
 }
 
+// trayStateWith returns a copy with the requested pause state.
 func trayStateWith(s tray.State, paused bool) tray.State { s.Paused = paused; return s }

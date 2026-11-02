@@ -56,10 +56,10 @@ func installArchive(archivePath, executablePath string) (bool, error) {
 			continue
 		}
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
-			return false, fmt.Errorf("archive member wormhole is not a regular file")
+			return false, fmt.Errorf("archive member %s is not a regular file", binaryName)
 		}
 		if found {
-			return false, errors.New("archive contains duplicate wormhole members")
+			return false, fmt.Errorf("archive contains duplicate %s members", binaryName)
 		}
 		n, err := io.Copy(staged, io.LimitReader(reader, maxBinarySize+1))
 		if err != nil {
@@ -71,7 +71,7 @@ func installArchive(archivePath, executablePath string) (bool, error) {
 		found = true
 	}
 	if !found {
-		return false, errors.New("archive does not contain wormhole")
+		return false, fmt.Errorf("archive does not contain %s", binaryName)
 	}
 	if err := staged.Chmod(0o755); err != nil {
 		return false, err

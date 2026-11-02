@@ -16,11 +16,13 @@ type deadlineUpdater struct {
 	hasDeadline bool
 }
 
+// CheckAndUpdate records whether the automatic update context has a deadline.
 func (u *deadlineUpdater) CheckAndUpdate(ctx context.Context, version string) (selfupdate.Result, error) {
 	_, u.hasDeadline = ctx.Deadline()
 	return u.fakeReleaseUpdater.CheckAndUpdate(ctx, version)
 }
 
+// TestAutomaticUpdateSkipsOptOutBeforeConstruction verifies opt-out avoids filesystem initialization.
 func TestAutomaticUpdateSkipsOptOutBeforeConstruction(t *testing.T) {
 	t.Setenv("WORMHOLE_NO_UPDATE_CHECK", "1")
 	var out, errOut bytes.Buffer
@@ -37,6 +39,7 @@ func TestAutomaticUpdateSkipsOptOutBeforeConstruction(t *testing.T) {
 	}
 }
 
+// TestAutomaticUpdateHasDeadline verifies bounded automatic update execution.
 func TestAutomaticUpdateHasDeadline(t *testing.T) {
 	u := &deadlineUpdater{}
 	var out, errOut bytes.Buffer
@@ -49,6 +52,7 @@ func TestAutomaticUpdateHasDeadline(t *testing.T) {
 	}
 }
 
+// TestUpdateEnableRejectsDevelopmentBuild verifies misleading opt-in is refused early.
 func TestUpdateEnableRejectsDevelopmentBuild(t *testing.T) {
 	var out, errOut bytes.Buffer
 	reexec := false
@@ -64,6 +68,7 @@ func TestUpdateEnableRejectsDevelopmentBuild(t *testing.T) {
 	}
 }
 
+// TestVersionFlagDoesNotRepeatCommit verifies concise Fang version metadata.
 func TestVersionFlagDoesNotRepeatCommit(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := contractApp(&out, &errOut)
@@ -75,6 +80,7 @@ func TestVersionFlagDoesNotRepeatCommit(t *testing.T) {
 	}
 }
 
+// TestCommandDiscoveryMarksInheritedFlagsPersistent verifies consistent flag metadata.
 func TestCommandDiscoveryMarksInheritedFlagsPersistent(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := contractApp(&out, &errOut)

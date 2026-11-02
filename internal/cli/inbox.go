@@ -21,7 +21,7 @@ import (
 // waiting on it.
 func (a *App) stagedThread(ctx context.Context, store *threads.Store, id string) (threads.Thread, error) {
 	if !envelope.ValidID(id) {
-		return threads.Thread{}, fail(ExitNotFound, "%q is not a thread id", id)
+		return threads.Thread{}, fail(ExitNotFound, invalidThreadIDFormat, id)
 	}
 	t, err := store.Get(ctx, id)
 	if err != nil {
@@ -90,6 +90,7 @@ func (a *App) newSnoozeCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// snoozeThread applies a snooze duration and formats its result.
 func (a *App) snoozeThread(ctx context.Context, store *threads.Store, t threads.Thread, d time.Duration) (snoozeResult, error) {
 	until, err := daemon.Snooze(ctx, store, t, a.Now(), d)
 	if err != nil {
@@ -171,6 +172,7 @@ func (a *App) newDeclineCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// declinePrompt describes the receipt a sender will receive.
 func declinePrompt(t threads.Thread, reason string) string {
 	return fmt.Sprintf("Decline this message from ^%s? They will see: %s", t.Peer, envelope.DeclineStatus(reason))
 }

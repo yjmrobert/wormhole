@@ -7,6 +7,7 @@ import (
 	"syscall"
 )
 
+// reexecCurrentProcess replaces the process with the current executable and arguments.
 func reexecCurrentProcess() error {
 	exe, err := os.Executable()
 	if err != nil {

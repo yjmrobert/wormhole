@@ -39,6 +39,7 @@ type fakeGitHub struct {
 	path []string
 }
 
+// newFakeGitHub serves configurable release metadata and assets.
 func newFakeGitHub(t *testing.T, tag string, archive []byte) *fakeGitHub {
 	t.Helper()
 	f := &fakeGitHub{tag: tag, archive: archive}
@@ -74,16 +75,19 @@ func newFakeGitHub(t *testing.T, tag string, archive []byte) *fakeGitHub {
 	return f
 }
 
+// paths returns a snapshot of requested server paths.
 func (f *fakeGitHub) paths() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.path...)
 }
 
+// archiveName returns the expected release asset name for a tag.
 func archiveName(tag string) string {
 	return "wormhole_" + strings.TrimPrefix(tag, "v") + "_linux_amd64.tar.gz"
 }
 
+// makeArchive builds an in-memory tar.gz update archive.
 func makeArchive(t *testing.T, entries ...tarEntry) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -121,6 +125,7 @@ func makeArchive(t *testing.T, entries ...tarEntry) []byte {
 	return buf.Bytes()
 }
 
+// testExecutable creates an installed binary and separate update-state directory.
 func testExecutable(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -128,18 +133,19 @@ func testExecutable(t *testing.T) (string, string) {
 	if err := os.Mkdir(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	exe := filepath.Join(binDir, "wormhole")
+	exe := filepath.Join(binDir, binaryName)
 	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return exe, filepath.Join(root, "state")
 }
 
+// newTestUpdater constructs an updater against a fake GitHub release service.
 func newTestUpdater(t *testing.T, f *fakeGitHub, exe, stateDir string, now *time.Time) *Updater {
 	t.Helper()
 	opts := Options{
 		Owner:          "acme",
-		Repo:           "wormhole",
+		Repo:           binaryName,
 		APIBase:        f.server.URL,
 		StateDir:       stateDir,
 		ExecutablePath: exe,
@@ -156,6 +162,7 @@ func newTestUpdater(t *testing.T, f *fakeGitHub, exe, stateDir string, now *time
 	return u
 }
 
+// readFile returns the contents of a test file as a string.
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -165,9 +172,10 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
+// TestAutomaticOptInThrottle verifies opt-in, update, and throttling behavior.
 func TestAutomaticOptInThrottle(t *testing.T) {
 	now := time.Date(2026, time.November, 1, 12, 0, 0, 0, time.UTC)
-	archive := makeArchive(t, tarEntry{name: "wormhole", body: "new binary"})
+	archive := makeArchive(t, tarEntry{name: binaryName, body: "new binary"})
 	f := newFakeGitHub(t, "v1.1.0", archive)
 	exe, stateDir := testExecutable(t)
 	u := newTestUpdater(t, f, exe, stateDir, &now)
@@ -210,6 +218,7 @@ func TestAutomaticOptInThrottle(t *testing.T) {
 	}
 }
 
+// TestAutomaticEnvironmentOverride verifies environment-based suppression of automatic checks.
 func TestAutomaticEnvironmentOverride(t *testing.T) {
 	for _, test := range []struct {
 		value    string
@@ -226,7 +235,7 @@ func TestAutomaticEnvironmentOverride(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("value_%q", test.value), func(t *testing.T) {
 			t.Setenv("WORMHOLE_NO_UPDATE_CHECK", test.value)
-			archive := makeArchive(t, tarEntry{name: "wormhole", body: "new"})
+			archive := makeArchive(t, tarEntry{name: binaryName, body: "new"})
 			f := newFakeGitHub(t, "v1.0.0", archive)
 			exe, stateDir := testExecutable(t)
 			u := newTestUpdater(t, f, exe, stateDir, nil)
@@ -247,8 +256,9 @@ func TestAutomaticEnvironmentOverride(t *testing.T) {
 	}
 }
 
+// TestNonReleaseVersions verifies that development and malformed versions cannot update.
 func TestNonReleaseVersions(t *testing.T) {
-	archive := makeArchive(t, tarEntry{name: "wormhole", body: "new"})
+	archive := makeArchive(t, tarEntry{name: binaryName, body: "new"})
 	f := newFakeGitHub(t, "v2.0.0", archive)
 	exe, stateDir := testExecutable(t)
 	u := newTestUpdater(t, f, exe, stateDir, nil)
@@ -309,7 +319,7 @@ func TestAutomaticRecordsFailedAttempts(t *testing.T) {
 
 func TestForceBypassesPolicy(t *testing.T) {
 	t.Setenv("WORMHOLE_NO_UPDATE_CHECK", "1")
-	archive := makeArchive(t, tarEntry{name: "wormhole", body: "new"})
+	archive := makeArchive(t, tarEntry{name: binaryName, body: "new"})
 	f := newFakeGitHub(t, "v1.0.0", archive)
 	exe, stateDir := testExecutable(t)
 	u := newTestUpdater(t, f, exe, stateDir, nil)
@@ -334,7 +344,7 @@ func TestForceBypassesPolicy(t *testing.T) {
 }
 
 func TestChecksumMismatchLeavesExecutableUnchanged(t *testing.T) {
-	archive := makeArchive(t, tarEntry{name: "wormhole", body: "new binary"})
+	archive := makeArchive(t, tarEntry{name: binaryName, body: "new binary"})
 	f := newFakeGitHub(t, "v1.1.0", archive)
 	f.checksums = []byte(fmt.Sprintf("%064d  %s\n", 0, archiveName(f.tag)))
 	exe, stateDir := testExecutable(t)
@@ -448,13 +458,13 @@ func TestBadArchivesLeaveExecutableUnchanged(t *testing.T) {
 			return makeArchive(t, tarEntry{name: "/wormhole", body: "evil"})
 		}},
 		{"symlink executable", func(t *testing.T) []byte {
-			return makeArchive(t, tarEntry{name: "wormhole", typeflag: tar.TypeSymlink, linkname: "/tmp/evil"})
+			return makeArchive(t, tarEntry{name: binaryName, typeflag: tar.TypeSymlink, linkname: "/tmp/evil"})
 		}},
 		{"directory executable", func(t *testing.T) []byte {
-			return makeArchive(t, tarEntry{name: "wormhole", typeflag: tar.TypeDir})
+			return makeArchive(t, tarEntry{name: binaryName, typeflag: tar.TypeDir})
 		}},
 		{"duplicate executable", func(t *testing.T) []byte {
-			return makeArchive(t, tarEntry{name: "wormhole", body: "first"}, tarEntry{name: "./wormhole", body: "second"})
+			return makeArchive(t, tarEntry{name: binaryName, body: "first"}, tarEntry{name: "./wormhole", body: "second"})
 		}},
 		{"nested executable only", func(t *testing.T) []byte {
 			return makeArchive(t, tarEntry{name: "bin/wormhole", body: "evil"})
@@ -482,7 +492,7 @@ func TestUnwritableDestinationLeavesExecutableUnchanged(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("requires a non-root Unix user")
 	}
-	archive := makeArchive(t, tarEntry{name: "wormhole", body: "new"})
+	archive := makeArchive(t, tarEntry{name: binaryName, body: "new"})
 	f := newFakeGitHub(t, "v2.0.0", archive)
 	exe, stateDir := testExecutable(t)
 	dir := filepath.Dir(exe)
@@ -540,6 +550,7 @@ func TestSemanticVersionOrdering(t *testing.T) {
 	}
 }
 
+// assertNoTemporaryFiles checks that update cleanup removed staging files.
 func assertNoTemporaryFiles(t *testing.T, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -550,5 +561,251 @@ func assertNoTemporaryFiles(t *testing.T, dir string) {
 		if strings.HasPrefix(entry.Name(), ".wormhole-download-") || strings.HasPrefix(entry.Name(), ".wormhole-update-") {
 			t.Errorf("temporary file left behind: %s", entry.Name())
 		}
+	}
+}
+
+// TestNewValidationAndDefaults verifies updater option validation and runtime defaults.
+func TestNewValidationAndDefaults(t *testing.T) {
+	if _, err := New(Options{}); err == nil {
+		t.Fatal("New accepted an empty state directory")
+	}
+	for _, apiBase := range []string{"://", "relative/path", "ftp://example.com"} {
+		t.Run(apiBase, func(t *testing.T) {
+			if _, err := New(Options{StateDir: t.TempDir(), APIBase: apiBase}); err == nil {
+				t.Fatalf("New accepted API base %q", apiBase)
+			}
+		})
+	}
+
+	u, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.owner != defaultOwner || u.repo != defaultRepo || u.apiBase != defaultAPIBase {
+		t.Fatalf("repository defaults = %q/%s at %q", u.owner, u.repo, u.apiBase)
+	}
+	if u.client == nil || u.now == nil || u.goos != runtime.GOOS || u.goarch != runtime.GOARCH {
+		t.Fatalf("runtime defaults were not applied: %+v", u)
+	}
+}
+
+// TestStateValidationFailures verifies corrupt state and persistence failures are reported.
+func TestStateValidationFailures(t *testing.T) {
+	t.Run("state path is directory", func(t *testing.T) {
+		stateDir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(stateDir, stateFileName), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(Options{StateDir: stateDir}); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("New error = %v", err)
+		}
+	})
+	t.Run("malformed state", func(t *testing.T) {
+		stateDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(stateDir, stateFileName), []byte("not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(Options{StateDir: stateDir}); err == nil || !strings.Contains(err.Error(), "decode update state") {
+			t.Fatalf("New error = %v", err)
+		}
+	})
+	t.Run("state directory is file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "state")
+		if err := os.WriteFile(path, []byte("file"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(Options{StateDir: path}); err == nil {
+			t.Fatal("New accepted a file as the state directory")
+		}
+	})
+	t.Run("save failure", func(t *testing.T) {
+		stateDir := t.TempDir()
+		u, err := New(Options{StateDir: stateDir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(u.statePath(), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := u.SetEnabled(true); err == nil {
+			t.Fatal("SetEnabled succeeded with a directory at the state path")
+		}
+	})
+	t.Run("automatic attempt save failure", func(t *testing.T) {
+		stateDir := t.TempDir()
+		u, err := New(Options{StateDir: stateDir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := u.SetEnabled(true); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(u.statePath()); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(u.statePath(), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := u.CheckAndUpdate(context.Background(), "v1.0.0"); err == nil || !strings.Contains(err.Error(), "record update check") {
+			t.Fatalf("CheckAndUpdate error = %v", err)
+		}
+	})
+}
+
+// TestLatestReleaseValidation verifies malformed and non-release metadata is rejected.
+func TestLatestReleaseValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", "not json"},
+		{"draft", `{"tag_name":"v1.0.0","draft":true}`},
+		{"prerelease", `{"tag_name":"v1.0.0","prerelease":true}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+			u := &Updater{apiBase: server.URL, client: server.Client()}
+			if _, err := u.latestRelease(context.Background()); err == nil {
+				t.Fatal("latestRelease accepted invalid release metadata")
+			}
+		})
+	}
+}
+
+// TestReleaseAssetURLValidation verifies asset selection and URL safety checks.
+func TestReleaseAssetURLValidation(t *testing.T) {
+	const name = "archive.tar.gz"
+	tests := []struct {
+		name    string
+		release release
+	}{
+		{"missing", release{}},
+		{"duplicate", release{Assets: []asset{{Name: name, URL: "https://example.com/one"}, {Name: name, URL: "https://example.com/two"}}}},
+		{"invalid URL", release{Assets: []asset{{Name: name, URL: "://"}}}},
+		{"relative URL", release{Assets: []asset{{Name: name, URL: "/download"}}}},
+		{"unsupported scheme", release{Assets: []asset{{Name: name, URL: "ftp://example.com/archive"}}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := test.release.assetURL(name); err == nil {
+				t.Fatal("assetURL accepted invalid assets")
+			}
+		})
+	}
+}
+
+// TestDownloadAndExecutableValidation verifies download limits, HTTP errors, and executable checks.
+func TestDownloadAndExecutableValidation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/large":
+			_, _ = w.Write([]byte("too large"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	u := &Updater{client: server.Client()}
+	if _, err := u.downloadBytes(context.Background(), server.URL+"/large", 4); err == nil || !strings.Contains(err.Error(), "exceeds 4 bytes") {
+		t.Fatalf("downloadBytes error = %v", err)
+	}
+	if _, err := u.get(context.Background(), server.URL+"/missing"); err == nil {
+		t.Fatal("get accepted a non-successful response")
+	}
+	if _, err := u.get(context.Background(), "://"); err == nil {
+		t.Fatal("get accepted an invalid URL")
+	}
+
+	if _, err := (&Updater{exePath: filepath.Join(t.TempDir(), "missing")}).executable(); err == nil {
+		t.Fatal("executable accepted a missing file")
+	}
+	if _, err := (&Updater{exePath: t.TempDir()}).executable(); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("executable directory error = %v", err)
+	}
+	if _, err := (&Updater{}).executable(); err != nil {
+		t.Fatalf("executable could not resolve the test process: %v", err)
+	}
+}
+
+// TestChecksumValidation verifies checksum parsing and digest normalization.
+func TestChecksumValidation(t *testing.T) {
+	const name = "archive.tar.gz"
+	const validHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"missing", "not a checksum\n"},
+		{"other archive", validHash + "  other.tar.gz\n"},
+		{"short hash", "abc  " + name + "\n"},
+		{"invalid hash", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz  " + name + "\n"},
+		{"duplicate", validHash + "  " + name + "\n" + validHash + " *" + name + "\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := checksumFor([]byte(test.data), name); err == nil {
+				t.Fatal("checksumFor accepted invalid checksums")
+			}
+		})
+	}
+	got, err := checksumFor([]byte(strings.ToUpper(validHash)+" *"+name+"\n"), name)
+	if err != nil || got != validHash {
+		t.Fatalf("checksumFor = %q, %v", got, err)
+	}
+}
+
+// TestArchiveAndSemanticVersionEdgeCases verifies malformed archives and version identifiers fail safely.
+func TestArchiveAndSemanticVersionEdgeCases(t *testing.T) {
+	if _, err := installArchive(filepath.Join(t.TempDir(), "missing.tar.gz"), filepath.Join(t.TempDir(), binaryName)); err == nil {
+		t.Fatal("installArchive opened a missing archive")
+	}
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write([]byte("not a tar archive")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "bad.tar.gz")
+	if err := os.WriteFile(archivePath, compressed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installArchive(archivePath, filepath.Join(root, binaryName)); err == nil {
+		t.Fatal("installArchive accepted malformed tar data")
+	}
+	if err := syncDir(filepath.Join(root, "missing")); err == nil {
+		t.Fatal("syncDir opened a missing directory")
+	}
+	for _, invalid := range []string{"1.2.3-alpha_1", "1.2.3+build_1", "1.2.3-alpha..1"} {
+		if _, err := parseSemanticVersion(invalid); err == nil {
+			t.Errorf("parseSemanticVersion accepted %q", invalid)
+		}
+	}
+	if isNumeric("") {
+		t.Fatal("isNumeric accepted an empty string")
+	}
+}
+
+// TestUpdateReleaseValidation verifies invalid release tags and unsupported platforms are rejected.
+func TestUpdateReleaseValidation(t *testing.T) {
+	archive := makeArchive(t, tarEntry{name: binaryName, body: "new"})
+	exe, stateDir := testExecutable(t)
+	f := newFakeGitHub(t, "not-semver", archive)
+	u := newTestUpdater(t, f, exe, stateDir, nil)
+	if _, err := u.ForceUpdate(context.Background(), "v1.0.0"); err == nil || !strings.Contains(err.Error(), "latest release tag") {
+		t.Fatalf("invalid latest tag error = %v", err)
+	}
+
+	f = newFakeGitHub(t, "v2.0.0", archive)
+	u = newTestUpdater(t, f, exe, stateDir, nil)
+	u.goos = "plan9"
+	if _, err := u.ForceUpdate(context.Background(), "v1.0.0"); !errors.Is(err, ErrUnsupportedPlatform) {
+		t.Fatalf("unsupported platform error = %v", err)
 	}
 }

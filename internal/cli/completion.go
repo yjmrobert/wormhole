@@ -12,6 +12,7 @@ import (
 
 const completionTimeout = 2 * time.Second
 
+// completeThreadIDs completes local thread identifiers and titles.
 func (a *App) completeThreadIDs(c *common, stagedOnly bool) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) != 0 || a.OpenStore == nil {
@@ -38,6 +39,7 @@ func (a *App) completeThreadIDs(c *common, stagedOnly bool) cobra.CompletionFunc
 	}
 }
 
+// registerCompletions attaches dynamic argument and flag completion handlers.
 func (a *App) registerCompletions(root *cobra.Command, c *common) {
 	threadsByName := map[string]bool{"open": true, "reply": false, "snooze": true, "decline": true}
 	for name, staged := range threadsByName {
@@ -60,6 +62,7 @@ func (a *App) registerCompletions(root *cobra.Command, c *common) {
 	}
 }
 
+// completeHandles completes remote handles and hosts from the registry.
 func (a *App) completeHandles(c *common) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) != 0 || a.NewBus == nil {

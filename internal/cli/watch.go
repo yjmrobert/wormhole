@@ -123,6 +123,7 @@ type watcher struct {
 	restoreTerminal func() error
 }
 
+// newWatchModel constructs an inbox model with its production collaborators.
 func newWatchModel(ctx context.Context, a *App, c *common, cfg *config.Config, store *threads.Store) *watcher {
 	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	vp.FillHeight = true
@@ -155,14 +156,17 @@ func newWatchModel(ctx context.Context, a *App, c *common, cfg *config.Config, s
 	return w
 }
 
+// Init starts the periodic inbox refresh schedule.
 func (w *watcher) Init() tea.Cmd {
 	return watchTick()
 }
 
+// watchTick schedules the next refresh event.
 func watchTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return watchTickMsg(t) })
 }
 
+// Update applies terminal, refresh, and command-completion events to the model.
 func (w *watcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -234,6 +238,7 @@ func (w *watcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return w, nil
 }
 
+// handleKey routes keyboard input according to the current interaction mode.
 func (w *watcher) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if w.busy {
@@ -265,7 +270,7 @@ func (w *watcher) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			w.status = "opening..."
 			return w, w.openCmd(t, agent)
 		}
-		w.status = "not started; it stays in the inbox"
+		w.status = notStartedMessage
 		w.endInput()
 		return w, nil
 	case watchDeclineConfirm:
@@ -308,6 +313,7 @@ func (w *watcher) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return w, nil
 }
 
+// beginOpen stages an open confirmation for the selected message.
 func (w *watcher) beginOpen(agent bool) {
 	t, ok := w.selected()
 	if !ok {
@@ -323,6 +329,7 @@ func (w *watcher) beginOpen(agent bool) {
 	w.prompt = openPrompt(t, agent)
 }
 
+// beginSnooze opens the duration input for the selected message.
 func (w *watcher) beginSnooze() {
 	t, ok := w.selected()
 	if !ok {
@@ -332,6 +339,7 @@ func (w *watcher) beginSnooze() {
 	w.beginInput(watchSnoozeInput, fmt.Sprintf("snooze ^%s for [%s, or off]: ", t.Peer, def), t)
 }
 
+// beginDecline opens the reason input for the selected message.
 func (w *watcher) beginDecline() {
 	t, ok := w.selected()
 	if !ok {
@@ -340,6 +348,7 @@ func (w *watcher) beginDecline() {
 	w.beginInput(watchDeclineInput, fmt.Sprintf("decline ^%s; reason for them (optional, Esc cancels): ", t.Peer), t)
 }
 
+// beginInput enters a text-input mode for a pending thread action.
 func (w *watcher) beginInput(mode watchMode, prompt string, t threads.Thread) {
 	w.mode = mode
 	w.prompt = prompt
@@ -350,6 +359,7 @@ func (w *watcher) beginInput(mode watchMode, prompt string, t threads.Thread) {
 	_ = w.input.Focus()
 }
 
+// endInput clears pending action state and returns to browse mode.
 func (w *watcher) endInput() {
 	w.mode = watchBrowse
 	w.prompt = ""
@@ -360,6 +370,7 @@ func (w *watcher) endInput() {
 	w.input.Reset()
 }
 
+// submitInput validates and starts the pending snooze or decline action.
 func (w *watcher) submitInput() (tea.Model, tea.Cmd) {
 	t := w.pending
 	value := w.input.Value()
@@ -383,6 +394,7 @@ func (w *watcher) submitInput() (tea.Model, tea.Cmd) {
 	return w, nil
 }
 
+// openCmd opens a session while releasing and restoring the terminal.
 func (w *watcher) openCmd(t threads.Thread, agent bool) tea.Cmd {
 	return func() tea.Msg {
 		var msg watchOpenMsg
@@ -400,6 +412,7 @@ func (w *watcher) openCmd(t threads.Thread, agent bool) tea.Cmd {
 	}
 }
 
+// snoozeCmd runs a snooze action asynchronously.
 func (w *watcher) snoozeCmd(t threads.Thread, d time.Duration) tea.Cmd {
 	return func() tea.Msg {
 		res, err := w.snoozeThread(w.ctx, t, d)
@@ -407,6 +420,7 @@ func (w *watcher) snoozeCmd(t threads.Thread, d time.Duration) tea.Cmd {
 	}
 }
 
+// declineCmd runs a decline action asynchronously.
 func (w *watcher) declineCmd(t threads.Thread, reason string) tea.Cmd {
 	return func() tea.Msg {
 		res, err := w.declineThread(w.ctx, t, reason)
@@ -424,6 +438,7 @@ func (w *watcher) refresh(ctx context.Context) error {
 	return nil
 }
 
+// nextRefresh starts an asynchronous reload and identifies stale responses.
 func (w *watcher) nextRefresh(manual bool) tea.Cmd {
 	w.refreshID++
 	id := w.refreshID
@@ -434,6 +449,7 @@ func (w *watcher) nextRefresh(manual bool) tea.Cmd {
 	}
 }
 
+// setItems replaces inbox items while preserving selection by thread ID.
 func (w *watcher) setItems(items []threads.Thread) {
 	oldID := ""
 	if t, ok := w.selected(); ok {
@@ -457,6 +473,7 @@ func (w *watcher) setItems(items []threads.Thread) {
 	}
 }
 
+// selected returns the selected thread when the index is valid.
 func (w *watcher) selected() (threads.Thread, bool) {
 	if w.sel < 0 || w.sel >= len(w.items) {
 		return threads.Thread{}, false
@@ -464,6 +481,7 @@ func (w *watcher) selected() (threads.Thread, bool) {
 	return w.items[w.sel], true
 }
 
+// selectIndex moves selection to a valid, different item.
 func (w *watcher) selectIndex(i int) {
 	if i < 0 || i >= len(w.items) || i == w.sel {
 		return
@@ -473,6 +491,7 @@ func (w *watcher) selectIndex(i int) {
 	w.viewport.GotoTop()
 }
 
+// setViewportContent displays the selected message or an empty viewport.
 func (w *watcher) setViewportContent() {
 	if t, ok := w.selected(); ok {
 		w.viewport.SetContentLines(wrapLines(t.StagedKickoff, w.width))
@@ -481,6 +500,7 @@ func (w *watcher) setViewportContent() {
 	}
 }
 
+// resize applies terminal dimensions and keeps active inputs usable.
 func (w *watcher) resize() {
 	if w.width < 1 {
 		w.width = 1
@@ -517,6 +537,7 @@ func (w *watcher) paneHeight() int {
 	return max(1, w.height-w.listHeight()-4)
 }
 
+// View renders the inbox list, message details, and current interaction prompt.
 func (w *watcher) View() tea.View {
 	now := w.app.Now()
 	waiting, snoozed := 0, 0

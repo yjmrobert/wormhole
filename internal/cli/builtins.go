@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// newVersionCommand reports semantic version and build metadata.
 func (a *App) newVersionCommand(c *common) *cobra.Command {
 	cmd := command("version", "Show version and build metadata")
 	cmd.Args = noArgs("wormhole version")
@@ -25,6 +26,7 @@ func (a *App) newVersionCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// newCompletionCommand generates shell completion scripts.
 func (a *App) newCompletionCommand() *cobra.Command {
 	cmd := command("completion bash|zsh|fish", "Generate a shell completion script")
 	cmd.ValidArgs = []string{"bash", "zsh", "fish"}
@@ -76,6 +78,7 @@ type flagInfo struct {
 	Persistent bool   `json:"persistent"`
 }
 
+// newCommandsCommand exposes the command tree for people and agents.
 func (a *App) newCommandsCommand(c *common) *cobra.Command {
 	var withFlags bool
 	cmd := command("commands [path...]", "Show the command tree and its flags")
@@ -104,6 +107,7 @@ func (a *App) newCommandsCommand(c *common) *cobra.Command {
 	return cmd
 }
 
+// describeCommand recursively builds command and flag metadata.
 func describeCommand(cmd *cobra.Command, root, withFlags bool) commandInfo {
 	info := commandInfo{
 		Name:        cmd.Name(),
@@ -144,6 +148,7 @@ func describeCommand(cmd *cobra.Command, root, withFlags bool) commandInfo {
 	return info
 }
 
+// printCommandInfo renders command metadata as an indented tree.
 func printCommandInfo(w io.Writer, info commandInfo, withFlags bool, depth int) {
 	indent := strings.Repeat("  ", depth)
 	fmt.Fprintf(w, "%s%s\t%s\n", indent, info.Path, info.Description)
@@ -161,6 +166,7 @@ func printCommandInfo(w io.Writer, info commandInfo, withFlags bool, depth int) 
 	}
 }
 
+// newManCommand generates a manual page from the Cobra command tree.
 func (a *App) newManCommand() *cobra.Command {
 	cmd := command("man", "Generate a man page")
 	cmd.Hidden = true

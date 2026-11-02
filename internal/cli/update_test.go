@@ -21,22 +21,28 @@ type fakeReleaseUpdater struct {
 	manualCalls     int
 }
 
+// CheckAndUpdate returns the configured automatic result and records the call.
 func (f *fakeReleaseUpdater) CheckAndUpdate(context.Context, string) (selfupdate.Result, error) {
 	f.automaticCalls++
 	return f.automaticResult, f.err
 }
 
+// ForceUpdate returns the configured manual result and records the call.
 func (f *fakeReleaseUpdater) ForceUpdate(context.Context, string) (selfupdate.Result, error) {
 	f.manualCalls++
 	return f.manualResult, f.err
 }
 
+// Enabled returns the fake preference.
 func (f *fakeReleaseUpdater) Enabled() bool { return f.enabled }
+
+// SetEnabled records the fake preference.
 func (f *fakeReleaseUpdater) SetEnabled(enabled bool) error {
 	f.enabled = enabled
 	return nil
 }
 
+// updateTestApp returns an interactive app wired to a fake updater.
 func updateTestApp(u *fakeReleaseUpdater, out, errOut *bytes.Buffer, reexec *bool) *App {
 	return &App{
 		Stdin:      strings.NewReader(""),
@@ -52,6 +58,7 @@ func updateTestApp(u *fakeReleaseUpdater, out, errOut *bytes.Buffer, reexec *boo
 	}
 }
 
+// TestAutomaticUpdateReexecsEligibleCommand verifies command restart after replacement.
 func TestAutomaticUpdateReexecsEligibleCommand(t *testing.T) {
 	u := &fakeReleaseUpdater{automaticResult: selfupdate.Result{Checked: true, Updated: true, Tag: "v1.1.0"}}
 	var out, errOut bytes.Buffer
@@ -63,6 +70,7 @@ func TestAutomaticUpdateReexecsEligibleCommand(t *testing.T) {
 	}
 }
 
+// TestAutomaticUpdateSkipsJSONAndFailuresAreNonFatal verifies automatic update policy.
 func TestAutomaticUpdateSkipsJSONAndFailuresAreNonFatal(t *testing.T) {
 	u := &fakeReleaseUpdater{err: errors.New("offline")}
 	var out, errOut bytes.Buffer
@@ -78,6 +86,7 @@ func TestAutomaticUpdateSkipsJSONAndFailuresAreNonFatal(t *testing.T) {
 	}
 }
 
+// TestUpdateCommandEnableAndForce verifies preference changes and manual updates.
 func TestUpdateCommandEnableAndForce(t *testing.T) {
 	u := &fakeReleaseUpdater{manualResult: selfupdate.Result{Checked: true, Latest: "1.1.0", Tag: "v1.1.0", Updated: true}}
 	var out, errOut bytes.Buffer

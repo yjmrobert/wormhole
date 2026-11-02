@@ -10,6 +10,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+// contractApp returns an app with fixed metadata and captured output.
 func contractApp(out, errOut *bytes.Buffer) *App {
 	return &App{
 		Stdin:      strings.NewReader(""),
@@ -22,6 +23,7 @@ func contractApp(out, errOut *bytes.Buffer) *App {
 	}
 }
 
+// TestVersionAndCommandDiscovery verifies version fields and command metadata.
 func TestVersionAndCommandDiscovery(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := contractApp(&out, &errOut)
@@ -48,6 +50,7 @@ func TestVersionAndCommandDiscovery(t *testing.T) {
 	}
 }
 
+// TestUsageErrorsRemainStructuredJSON verifies stable JSON usage failures.
 func TestUsageErrorsRemainStructuredJSON(t *testing.T) {
 	for _, args := range [][]string{{"not-a-command", "--json"}, {"ask", "--json"}, {"open", "--json"}} {
 		var out, errOut bytes.Buffer
@@ -65,6 +68,7 @@ func TestUsageErrorsRemainStructuredJSON(t *testing.T) {
 	}
 }
 
+// TestHelpAndCompletionStayPlain verifies redirected output contains no ANSI styling.
 func TestHelpAndCompletionStayPlain(t *testing.T) {
 	for _, args := range [][]string{{"--help", "--json"}, {"completion", "bash"}} {
 		var out, errOut bytes.Buffer
@@ -78,6 +82,7 @@ func TestHelpAndCompletionStayPlain(t *testing.T) {
 	}
 }
 
+// TestNoInputDoesNotConfirm verifies noninteractive mode refuses confirmation.
 func TestNoInputDoesNotConfirm(t *testing.T) {
 	app := contractApp(&bytes.Buffer{}, &bytes.Buffer{})
 	reviewed, err := app.review(&common{noInput: true}, envelope.Envelope{}, false)
