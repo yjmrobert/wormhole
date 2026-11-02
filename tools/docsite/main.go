@@ -177,6 +177,7 @@ func build(root, out, base, version, repo string, now time.Time) error {
 
 var frontmatterRE = regexp.MustCompile(`(?s)\A---\n.*?\n---\n`)
 
+// stripFrontmatter removes leading YAML frontmatter from a Markdown source.
 func stripFrontmatter(b []byte) []byte {
 	return frontmatterRE.ReplaceAll(b, nil)
 }
@@ -184,6 +185,7 @@ func stripFrontmatter(b []byte) []byte {
 // linkRewriter turns links to sibling Markdown files into site URLs.
 type linkRewriter struct{ base string }
 
+// Transform rewrites relative Markdown link destinations in a parsed document.
 func (l linkRewriter) Transform(doc *ast.Document, reader text.Reader, pc parser.Context) {
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {

@@ -24,6 +24,7 @@ func open(t *testing.T) *Store {
 	return s
 }
 
+// TestThreadLifecycle verifies thread updates, message storage, and open filtering.
 func TestThreadLifecycle(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()

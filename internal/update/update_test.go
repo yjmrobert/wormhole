@@ -287,6 +287,7 @@ func TestNonReleaseVersions(t *testing.T) {
 	}
 }
 
+// TestAutomaticRecordsFailedAttempts verifies failed checks are throttled and persisted.
 func TestAutomaticRecordsFailedAttempts(t *testing.T) {
 	now := time.Date(2026, time.November, 1, 12, 0, 0, 0, time.UTC)
 	f := newFakeGitHub(t, "v2.0.0", nil)
@@ -317,6 +318,7 @@ func TestAutomaticRecordsFailedAttempts(t *testing.T) {
 	}
 }
 
+// TestForceBypassesPolicy verifies manual checks ignore automatic-update policy.
 func TestForceBypassesPolicy(t *testing.T) {
 	t.Setenv("WORMHOLE_NO_UPDATE_CHECK", "1")
 	archive := makeArchive(t, tarEntry{name: binaryName, body: "new"})

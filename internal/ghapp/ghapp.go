@@ -170,6 +170,7 @@ func (e *Exec) Check() error {
 	return nil
 }
 
+// run executes a command with the configured timeout and captures its output.
 func (e *Exec) run(ctx context.Context, dir string, name string, args ...string) error {
 	if e.Timeout > 0 {
 		var cancel context.CancelFunc

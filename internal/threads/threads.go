@@ -218,6 +218,7 @@ const timeLayout = time.RFC3339
 // fmtTime encodes a timestamp in the database's canonical UTC format.
 func fmtTime(t time.Time) string { return t.UTC().Format(timeLayout) }
 
+// parseTime decodes a database timestamp, returning the zero time on failure.
 func parseTime(s string) time.Time {
 	t, _ := time.Parse(timeLayout, s)
 	return t

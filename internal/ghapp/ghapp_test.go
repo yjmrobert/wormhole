@@ -25,6 +25,7 @@ func TestNewSessionID(t *testing.T) {
 	}
 }
 
+// TestSessionName verifies whitespace normalization and rune-limited titles.
 func TestSessionName(t *testing.T) {
 	if got := SessionName("alice", "  What do\nyou think?"); got != "^alice: What do you think?" {
 		t.Fatal(got)

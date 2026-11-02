@@ -69,6 +69,7 @@ func (s *side) cli(t *testing.T, stdin string, args ...string) (int, map[string]
 	return code, parsed, errb.String()
 }
 
+// runDaemon starts a side's daemon and stops it during test cleanup.
 func (s *side) runDaemon(t *testing.T) {
 	t.Helper()
 	store, err := threads.Open(s.dbPath)
@@ -87,6 +88,7 @@ func (s *side) runDaemon(t *testing.T) {
 	t.Cleanup(func() { cancel(); <-done; b.Close(); store.Close() })
 }
 
+// newSide creates an isolated config, store, and app recorder for one user.
 func newSide(t *testing.T, handle, yaml string, newBus func(ctx context.Context, cfg *config.Config) (bus.Bus, error)) *side {
 	t.Helper()
 	dir := t.TempDir()
@@ -104,6 +106,7 @@ func newSide(t *testing.T, handle, yaml string, newBus func(ctx context.Context,
 	return &side{handle: handle, cfgPath: cfgPath, dbPath: filepath.Join(dir, "state", "threads.db"), app: &ghapp.Recorder{}, cfg: cfg, newBus: newBus, session: handle + "-root-session"}
 }
 
+// waitFor polls cond until it succeeds or the test deadline expires.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -116,6 +119,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// threadState loads the current thread from a side's store.
 func threadState(t *testing.T, s *side, id string) threads.Thread {
 	t.Helper()
 	store, err := threads.Open(s.dbPath)

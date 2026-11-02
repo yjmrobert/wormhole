@@ -79,6 +79,7 @@ func TestBuildSite(t *testing.T) {
 	}
 }
 
+// TestStripFrontmatter verifies removal of frontmatter without altering other content.
 func TestStripFrontmatter(t *testing.T) {
 	got := string(stripFrontmatter([]byte("---\nname: x\n---\n# Title\n")))
 	if got != "# Title\n" {
