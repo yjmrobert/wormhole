@@ -33,7 +33,10 @@ const (
 	developmentVersion    = "dev"
 	developmentVersionAlt = "(devel)"
 	noUpdateCheckEnv      = "WORMHOLE_NO_UPDATE_CHECK"
+	httpScheme            = "http"
+	httpsScheme           = "https"
 	userAgent             = "wormhole-self-update"
+	userAgentHeader       = "User-Agent"
 	versionPrefix         = "v"
 )
 
@@ -102,7 +105,7 @@ func New(opts Options) (*Updater, error) {
 		opts.APIBase = defaultAPIBase
 	}
 	base, err := url.Parse(opts.APIBase)
-	if err != nil || base.Scheme == "" || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
+	if err != nil || base.Scheme == "" || base.Host == "" || (base.Scheme != httpScheme && base.Scheme != httpsScheme) {
 		return nil, fmt.Errorf("update: invalid API base URL %q", opts.APIBase)
 	}
 	if opts.HTTPClient == nil {
@@ -303,7 +306,7 @@ func (r release) assetURL(name string) (string, error) {
 		return "", fmt.Errorf("release is missing asset %q", name)
 	}
 	parsed, err := url.Parse(found)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil || parsed.Host == "" || (parsed.Scheme != httpScheme && parsed.Scheme != httpsScheme) {
 		return "", fmt.Errorf("release asset %q has invalid download URL", name)
 	}
 	return found, nil
@@ -317,7 +320,7 @@ func (u *Updater) latestRelease(ctx context.Context) (release, error) {
 		return release{}, fmt.Errorf("create release request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set(userAgentHeader, userAgent)
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return release{}, fmt.Errorf("check latest release: %w", err)
@@ -381,7 +384,7 @@ func (u *Updater) get(ctx context.Context, source string) (*http.Response, error
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set(userAgentHeader, userAgent)
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -442,7 +445,7 @@ func checksumFor(data []byte, name string) (string, error) {
 		found = hash
 	}
 	if found == "" {
-		return "", fmt.Errorf("checksums.txt has no entry for %s", name)
+		return "", fmt.Errorf("%s has no entry for %s", checksumsFileName, name)
 	}
 	return found, nil
 }

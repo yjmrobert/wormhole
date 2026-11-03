@@ -22,8 +22,10 @@ type collector struct {
 	wake chan struct{}
 }
 
+// newCollector creates a delivery collector with a buffered wake-up channel.
 func newCollector() *collector { return &collector{wake: make(chan struct{}, 100)} }
 
+// handler records deliveries and optionally acknowledges each one.
 func (c *collector) handler(b bus.Bus, ack bool) bus.Handler {
 	return func(ctx context.Context, d bus.Delivery) {
 		c.mu.Lock()
@@ -36,6 +38,7 @@ func (c *collector) handler(b bus.Bus, ack bool) bus.Handler {
 	}
 }
 
+// wait returns after collecting n deliveries or fails the test on timeout.
 func (c *collector) wait(t *testing.T, n int) []bus.Delivery {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
@@ -55,6 +58,7 @@ func (c *collector) wait(t *testing.T, n int) []bus.Delivery {
 	}
 }
 
+// TestDurableDeliveryInOrder verifies queued messages arrive once in order.
 func TestDurableDeliveryInOrder(t *testing.T) {
 	br := NewBroker()
 	defer br.Close()
@@ -84,6 +88,7 @@ func TestDurableDeliveryInOrder(t *testing.T) {
 	}
 }
 
+// TestPermissions verifies handle validation and publish restrictions.
 func TestPermissions(t *testing.T) {
 	br := NewBroker()
 	defer br.Close()
@@ -101,6 +106,7 @@ func TestPermissions(t *testing.T) {
 	}
 }
 
+// TestNakRedeliversThenDLQ retries rejected deliveries before dead-lettering.
 func TestNakRedeliversThenDLQ(t *testing.T) {
 	br := NewBroker(WithMaxDeliver(3))
 	defer br.Close()
@@ -140,6 +146,7 @@ func TestNakRedeliversThenDLQ(t *testing.T) {
 	}
 }
 
+// TestAckWaitRedelivers verifies redelivery when an acknowledgement times out.
 func TestAckWaitRedelivers(t *testing.T) {
 	br := NewBroker(WithAckWait(20 * time.Millisecond))
 	defer br.Close()
@@ -165,6 +172,7 @@ func TestAckWaitRedelivers(t *testing.T) {
 	}
 }
 
+// TestOneInFlightAtATime verifies delivery waits for the prior acknowledgement.
 func TestOneInFlightAtATime(t *testing.T) {
 	br := NewBroker()
 	defer br.Close()
@@ -200,6 +208,7 @@ func TestOneInFlightAtATime(t *testing.T) {
 	}
 }
 
+// TestRegistry verifies presence entries are sorted by handle.
 func TestRegistry(t *testing.T) {
 	br := NewBroker()
 	defer br.Close()

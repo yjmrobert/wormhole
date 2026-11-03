@@ -19,6 +19,7 @@ func write(t *testing.T, dir, name, content string, mode os.FileMode) string {
 	return p
 }
 
+// TestExampleParses verifies the shipped example and its default values.
 func TestExampleParses(t *testing.T) {
 	cfg, err := Parse([]byte(Example))
 	if err != nil {
@@ -49,6 +50,7 @@ func TestExampleParses(t *testing.T) {
 	}
 }
 
+// TestCopilotExtraArgs verifies preservation of configured CLI arguments.
 func TestCopilotExtraArgs(t *testing.T) {
 	cfg, err := Parse([]byte(`
 handle: alice
@@ -63,6 +65,7 @@ copilot: {safe_tools: [view, grep, glob, bash], extra_args: ["--allow-tool", "sh
 	}
 }
 
+// TestSenderForms verifies scalar and mapping sender declarations.
 func TestSenderForms(t *testing.T) {
 	cfg, err := Parse([]byte(`
 handle: bob
@@ -84,6 +87,7 @@ copilot:
 	}
 }
 
+// TestNotifyModes verifies notification mode parsing and enabled state.
 func TestNotifyModes(t *testing.T) {
 	cases := map[string]NotifyMode{
 		"":                NotifyToast,
@@ -111,6 +115,7 @@ func TestNotifyModes(t *testing.T) {
 	}
 }
 
+// TestQuietHours verifies overnight, same-day, and unset quiet windows.
 func TestQuietHours(t *testing.T) {
 	cfg, err := Parse([]byte("handle: alice\nbus: {kind: memory}\ndaemon: {quiet_hours: [\"18:00\", \"09:00\"]}\n"))
 	if err != nil {
@@ -135,6 +140,7 @@ func TestQuietHours(t *testing.T) {
 	}
 }
 
+// TestValidation verifies rejection of invalid configuration settings.
 func TestValidation(t *testing.T) {
 	bad := map[string]string{
 		"notify mode":   "handle: alice\nbus: {kind: memory}\ndaemon: {notify: loud}\n",
@@ -167,6 +173,7 @@ func TestValidation(t *testing.T) {
 	}
 }
 
+// TestLoadGuards verifies file permission and credential location checks.
 func TestLoadGuards(t *testing.T) {
 	dir := t.TempDir()
 	pw := write(t, dir, "password", "hunter22\n", 0o600)
@@ -200,6 +207,7 @@ func TestLoadGuards(t *testing.T) {
 	}
 }
 
+// TestInboxUIAddresses verifies loopback addresses and disabled UI defaults.
 func TestInboxUIAddresses(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:7788", "localhost:7788", "[::1]:7788", "127.0.0.1:0"} {
 		if _, err := Parse([]byte("handle: alice\nbus: {kind: memory}\ndaemon: {inbox_ui: \"" + addr + "\", tray: true}\n")); err != nil {
@@ -212,6 +220,7 @@ func TestInboxUIAddresses(t *testing.T) {
 	}
 }
 
+// TestWorkdirFor verifies repository mappings and the configured fallback.
 func TestWorkdirFor(t *testing.T) {
 	cfg, err := Parse([]byte("handle: alice\nbus: {kind: memory}\ncopilot: {workdir: /srv/wh}\nrepos: {\"owner/repo\": /src/repo}\n"))
 	if err != nil {

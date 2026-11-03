@@ -21,6 +21,16 @@ import (
 	"time"
 )
 
+const (
+	copilotModelFlag          = "--model"
+	copilotAvailableToolsFlag = "--available-tools"
+	workdirErrorFormat        = "workdir: %w"
+	displayEnv                = "DISPLAY"
+	waylandDisplayEnv         = "WAYLAND_DISPLAY"
+	notifyAppNameArg          = "--app-name=wormhole"
+	notifyLowUrgencyArg       = "--urgency=low"
+)
+
 // Session describes a session to create, or (for Resume) the session to
 // append a turn to.
 type Session struct {
@@ -196,14 +206,14 @@ func (e *Exec) run(ctx context.Context, dir string, name string, args ...string)
 // [--available-tools a,b] [extra args].
 func (e *Exec) Create(ctx context.Context, s Session) error {
 	if err := os.MkdirAll(s.Workdir, 0o755); err != nil {
-		return fmt.Errorf("workdir: %w", err)
+		return fmt.Errorf(workdirErrorFormat, err)
 	}
 	args := []string{"-p", s.Kickoff, "--session-id", s.ID, "-n", s.Name}
 	if s.Model != "" {
-		args = append(args, "--model", s.Model)
+		args = append(args, copilotModelFlag, s.Model)
 	}
 	if len(s.AvailableTools) > 0 {
-		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
+		args = append(args, copilotAvailableToolsFlag, strings.Join(s.AvailableTools, ","))
 	}
 	args = append(args, s.ExtraArgs...)
 	return e.run(ctx, s.Workdir, e.Binary, args...)
@@ -215,15 +225,15 @@ func (e *Exec) Create(ctx context.Context, s Session) error {
 func (e *Exec) Resume(ctx context.Context, s Session) error {
 	if s.Workdir != "" {
 		if err := os.MkdirAll(s.Workdir, 0o755); err != nil {
-			return fmt.Errorf("workdir: %w", err)
+			return fmt.Errorf(workdirErrorFormat, err)
 		}
 	}
 	args := []string{"-p", s.Kickoff, "--resume=" + s.ID}
 	if s.Model != "" {
-		args = append(args, "--model", s.Model)
+		args = append(args, copilotModelFlag, s.Model)
 	}
 	if len(s.AvailableTools) > 0 {
-		args = append(args, "--available-tools", strings.Join(s.AvailableTools, ","))
+		args = append(args, copilotAvailableToolsFlag, strings.Join(s.AvailableTools, ","))
 	}
 	args = append(args, s.ExtraArgs...)
 	return e.run(ctx, s.Workdir, e.Binary, args...)
@@ -231,7 +241,7 @@ func (e *Exec) Resume(ctx context.Context, s Session) error {
 
 // Open runs: xdg-open ghapp://sessions/<id>.
 func (e *Exec) Open(ctx context.Context, sessionID string) error {
-	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+	if os.Getenv(displayEnv) == "" && os.Getenv(waylandDisplayEnv) == "" {
 		return errors.New("no DISPLAY or WAYLAND_DISPLAY in the daemon's environment; run: systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -253,9 +263,9 @@ func (e *Exec) Notify(ctx context.Context, n Notification) (NotifyResult, error)
 	if len(n.Actions) > 0 && e.ActionTimeout > 0 {
 		timeout = e.ActionTimeout
 	}
-	args := []string{"--app-name=wormhole"}
+	args := []string{notifyAppNameArg}
 	if n.Low {
-		args = append(args, "--urgency=low")
+		args = append(args, notifyLowUrgencyArg)
 	}
 	if rich {
 		if n.ReplaceID != 0 {
@@ -280,9 +290,9 @@ func (e *Exec) Notify(ctx context.Context, n Notification) (NotifyResult, error)
 		return NotifyResult{}, err
 	}
 	// An old notify-send, or a notifier without actions: fall back.
-	plain := []string{"--app-name=wormhole"}
+	plain := []string{notifyAppNameArg}
 	if n.Low {
-		plain = append(plain, "--urgency=low")
+		plain = append(plain, notifyLowUrgencyArg)
 	}
 	plain = append(plain, n.Title, n.Body)
 	pctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -336,7 +346,7 @@ func (e *Exec) ShowInbox(ctx context.Context, argv []string) error {
 	if len(argv) == 0 {
 		return errors.New("empty show command")
 	}
-	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+	if os.Getenv(displayEnv) == "" && os.Getenv(waylandDisplayEnv) == "" {
 		return errors.New("no DISPLAY or WAYLAND_DISPLAY in the daemon's environment")
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -372,6 +382,7 @@ type Recorder struct {
 	OnNotify func(ctx context.Context, n Notification) NotifyResult
 }
 
+// record stores a call and applies the recorder's configured failure.
 func (r *Recorder) record(c Call) error {
 	r.mu.Lock()
 	r.Calls = append(r.Calls, c)
@@ -382,18 +393,22 @@ func (r *Recorder) record(c Call) error {
 	return nil
 }
 
+// Create records a session creation.
 func (r *Recorder) Create(ctx context.Context, s Session) error {
 	return r.record(Call{Op: "create", Session: s})
 }
 
+// Resume records a session resumption.
 func (r *Recorder) Resume(ctx context.Context, s Session) error {
 	return r.record(Call{Op: "resume", Session: s, SessionID: s.ID, Prompt: s.Kickoff})
 }
 
+// Open records a request to open a session.
 func (r *Recorder) Open(ctx context.Context, sessionID string) error {
 	return r.record(Call{Op: "open", SessionID: sessionID})
 }
 
+// Notify records a notification and returns the configured result.
 func (r *Recorder) Notify(ctx context.Context, n Notification) (NotifyResult, error) {
 	if err := r.record(Call{Op: "notify", Title: n.Title, Body: n.Body, Notification: n}); err != nil {
 		return NotifyResult{}, err
@@ -404,6 +419,7 @@ func (r *Recorder) Notify(ctx context.Context, n Notification) (NotifyResult, er
 	return NotifyResult{ID: 1}, nil
 }
 
+// ShowInbox records a request to show the inbox.
 func (r *Recorder) ShowInbox(ctx context.Context, argv []string) error {
 	return r.record(Call{Op: "show", Argv: argv})
 }

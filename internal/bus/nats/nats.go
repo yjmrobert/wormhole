@@ -27,6 +27,11 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+const (
+	logKeyError   = "err"
+	logKeySubject = "subject"
+)
+
 // Deployment constants. They must match deploy/nats/*.example.
 const (
 	StreamName   = "WORMHOLE"
@@ -85,13 +90,13 @@ func Connect(ctx context.Context, o Options) (*Bus, error) {
 		natsgo.Timeout(10 * time.Second),
 		natsgo.DisconnectErrHandler(func(_ *natsgo.Conn, err error) {
 			if err != nil {
-				o.Log.Warn("bus disconnected", "err", err)
+				o.Log.Warn("bus disconnected", logKeyError, err)
 			}
 		}),
 		natsgo.ReconnectHandler(func(nc *natsgo.Conn) { o.Log.Info("bus reconnected", "url", nc.ConnectedUrlRedacted()) }),
 		natsgo.ErrorHandler(func(_ *natsgo.Conn, _ *natsgo.Subscription, err error) {
 			// Permission violations surface here asynchronously.
-			o.Log.Warn("bus error", "err", err)
+			o.Log.Warn("bus error", logKeyError, err)
 		}),
 	}
 	switch {
@@ -166,6 +171,7 @@ type subscription struct {
 	cc jetstream.ConsumeContext
 }
 
+// Stop drains the subscription and stops message delivery.
 func (s *subscription) Stop() error {
 	s.cc.Drain()
 	return nil
@@ -195,17 +201,18 @@ func (b *Bus) Subscribe(ctx context.Context, h bus.Handler) (bus.Subscription, e
 	return &subscription{cc: cc}, nil
 }
 
+// deliver decodes a JetStream message and passes a valid delivery to h.
 func (b *Bus) deliver(ctx context.Context, m jetstream.Msg, h bus.Handler) {
 	parsed, err := bus.ParseSubject(m.Subject())
 	if err != nil {
-		b.log.Warn("terminating message on malformed subject", "subject", m.Subject())
+		b.log.Warn("terminating message on malformed subject", logKeySubject, m.Subject())
 		_ = m.Term()
 		return
 	}
 	env, err := envelope.Unmarshal(m.Data())
 	if err != nil {
 		// Undecodable payloads will never decode; do not spend retries.
-		b.log.Warn("terminating undecodable message", "subject", m.Subject(), "err", err)
+		b.log.Warn("terminating undecodable message", logKeySubject, m.Subject(), logKeyError, err)
 		_ = m.Term()
 		return
 	}
@@ -221,6 +228,7 @@ func (b *Bus) deliver(ctx context.Context, m jetstream.Msg, h bus.Handler) {
 	h(ctx, bus.Delivery{ID: id, Subject: m.Subject(), Sender: parsed.From, Env: env, Attempt: attempt})
 }
 
+// take removes and returns the in-flight message identified by id.
 func (b *Bus) take(id bus.MessageID) (jetstream.Msg, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -289,6 +297,7 @@ func (b *Bus) Status(ctx context.Context) (Status, error) {
 
 type registry struct{ b *Bus }
 
+// kv opens the key-value bucket backing the handle registry.
 func (r *registry) kv(ctx context.Context) (jetstream.KeyValue, error) {
 	kv, err := r.b.js.KeyValue(ctx, BucketName)
 	if err != nil {
@@ -297,6 +306,7 @@ func (r *registry) kv(ctx context.Context) (jetstream.KeyValue, error) {
 	return kv, nil
 }
 
+// Put stores the authenticated user's presence in the registry.
 func (r *registry) Put(ctx context.Context, p bus.Presence) error {
 	if p.Handle != r.b.user {
 		return fmt.Errorf("%w: %s may only publish its own presence", bus.ErrPermission, r.b.user)

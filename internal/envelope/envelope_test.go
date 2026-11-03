@@ -14,6 +14,7 @@ func alice() Peer {
 	return Peer{User: "alice", Host: "alice-laptop", SessionID: "d29557f4-0000-4000-8000-000000000000"}
 }
 
+// TestNewAskIsValid verifies the fields initialized for a new ask.
 func TestNewAskIsValid(t *testing.T) {
 	e := NewAsk(alice(), "bob", "What do you think about X?", now)
 	if err := e.Validate(now); err != nil {
@@ -30,6 +31,7 @@ func TestNewAskIsValid(t *testing.T) {
 	}
 }
 
+// TestRoundTripJSON verifies JSON encoding, decoding, and unknown-field rejection.
 func TestRoundTripJSON(t *testing.T) {
 	e := NewAsk(alice(), "bob", "hello", now)
 	e.Context = Context{Repo: "owner/repo", Ref: "PR #123"}
@@ -54,6 +56,7 @@ func TestRoundTripJSON(t *testing.T) {
 	}
 }
 
+// TestFollowUpAndAck verifies reply threading and acknowledgement statuses.
 func TestFollowUpAndAck(t *testing.T) {
 	ask := NewAsk(alice(), "bob", "q", now)
 	bob := Peer{User: "bob", Host: "bob-laptop"}
@@ -100,6 +103,7 @@ func TestFollowUpAndAck(t *testing.T) {
 	}
 }
 
+// TestValidateRejects verifies each envelope invariant and its sentinel error.
 func TestValidateRejects(t *testing.T) {
 	base := func() Envelope { return NewAsk(alice(), "bob", "q", now) }
 	cases := []struct {
@@ -135,6 +139,7 @@ func TestValidateRejects(t *testing.T) {
 	}
 }
 
+// TestScanSecrets verifies credential detection without common false positives.
 func TestScanSecrets(t *testing.T) {
 	hits := []string{
 		"here is my key ghp_abcdefghijklmnopqrstuvwxyz0123",
@@ -163,6 +168,7 @@ func TestScanSecrets(t *testing.T) {
 	}
 }
 
+// TestValidHandle verifies accepted and rejected handle forms.
 func TestValidHandle(t *testing.T) {
 	for _, ok := range []string{"alice", "bob2", "a", "dev-ops_1", strings.Repeat("a", 64)} {
 		if !ValidHandle(ok) {

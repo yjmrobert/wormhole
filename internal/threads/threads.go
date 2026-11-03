@@ -171,7 +171,7 @@ func Open(path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("migrate threads db: %w", err)
+		return nil, fmt.Errorf(migrateThreadsDBError, err)
 	}
 	// user_version marks the schema so a later change can tell a fresh
 	// file from one that needs migrating.
@@ -187,7 +187,7 @@ func Open(path string) (*Store, error) {
 	case version < SchemaVersion:
 		if err := migrate(db, version); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("migrate threads db: %w", err)
+			return nil, fmt.Errorf(migrateThreadsDBError, err)
 		}
 	}
 	if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
@@ -213,7 +213,12 @@ func migrate(db *sql.DB, from int) error {
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
-const timeLayout = time.RFC3339
+const (
+	timeLayout            = time.RFC3339
+	migrateThreadsDBError = "migrate threads db: %w"
+	putThreadError        = "put thread: %w"
+	listThreadsError      = "list threads: %w"
+)
 
 // fmtTime encodes a timestamp in the database's canonical UTC format.
 func fmtTime(t time.Time) string { return t.UTC().Format(timeLayout) }
@@ -227,7 +232,7 @@ func parseTime(s string) time.Time {
 // Put inserts or replaces a thread row.
 func (s *Store) Put(ctx context.Context, t Thread) error {
 	if !envelope.ValidID(t.ID) {
-		return fmt.Errorf("put thread: %w", envelope.ErrThread)
+		return fmt.Errorf(putThreadError, envelope.ErrThread)
 	}
 	now := time.Now()
 	if t.CreatedAt.IsZero() {
@@ -252,7 +257,7 @@ func (s *Store) Put(ctx context.Context, t Thread) error {
 		t.Title, t.Repo, t.Workdir, boolInt(t.Opened), t.StagedKickoff, fmtOptTime(t.SnoozedUntil), t.LastMessageID, t.LastPreview,
 		fmtTime(t.LastMessageAt), fmtTime(t.ExpiresAt), fmtTime(t.CreatedAt), fmtTime(t.UpdatedAt))
 	if err != nil {
-		return fmt.Errorf("put thread: %w", err)
+		return fmt.Errorf(putThreadError, err)
 	}
 	return nil
 }
@@ -265,6 +270,7 @@ func fmtOptTime(t time.Time) string {
 	return fmtTime(t)
 }
 
+// boolInt converts a boolean to its SQLite integer representation.
 func boolInt(b bool) int {
 	if b {
 		return 1
@@ -277,6 +283,7 @@ const threadCols = `id, peer, direction, mode, state, local_session_id, root_ses
 
 type scanner interface{ Scan(dest ...any) error }
 
+// scanThread decodes a database row into a Thread.
 func scanThread(r scanner) (Thread, error) {
 	var t Thread
 	var dir, mode, state string
@@ -363,14 +370,14 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Thread, error) {
 	q += " ORDER BY last_message_at DESC, id DESC"
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list threads: %w", err)
+		return nil, fmt.Errorf(listThreadsError, err)
 	}
 	defer rows.Close()
 	var out []Thread
 	for rows.Next() {
 		t, err := scanThread(rows)
 		if err != nil {
-			return nil, fmt.Errorf("list threads: %w", err)
+			return nil, fmt.Errorf(listThreadsError, err)
 		}
 		out = append(out, t)
 	}
@@ -446,6 +453,7 @@ func (s *Store) HasMessage(ctx context.Context, id string) (bool, error) {
 	return n > 0, nil
 }
 
+// scanMessage decodes a database row into a Message.
 func scanMessage(r scanner) (Message, error) {
 	var m Message
 	var typ, dir, created string

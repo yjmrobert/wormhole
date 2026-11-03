@@ -406,6 +406,7 @@ repos: {"owner/repo": /tmp/wh-e2e/repo}
 daemon: {registry_interval: 1s}
 `
 
+// passwordFile writes a test user's password and returns its path.
 func passwordFile(t *testing.T, user string) string {
 	p := filepath.Join(t.TempDir(), "password")
 	if err := os.WriteFile(p, []byte("CHANGE_ME_"+user+"\n"), 0o600); err != nil {
@@ -414,6 +415,7 @@ func passwordFile(t *testing.T, user string) string {
 	return p
 }
 
+// TestRoundTripMemoryBus runs the complete scenario over the in-memory bus.
 func TestRoundTripMemoryBus(t *testing.T) {
 	broker := memory.NewBroker()
 	defer broker.Close()
@@ -423,6 +425,7 @@ func TestRoundTripMemoryBus(t *testing.T) {
 	roundTrip(t, alice, bob)
 }
 
+// TestRoundTripNATS runs the complete scenario over a local NATS server.
 func TestRoundTripNATS(t *testing.T) {
 	url := startNATS(t)
 	newBus := func(ctx context.Context, cfg *config.Config) (bus.Bus, error) {
@@ -433,6 +436,7 @@ func TestRoundTripNATS(t *testing.T) {
 	roundTrip(t, alice, bob)
 }
 
+// startNATS starts and configures an isolated NATS server for the test.
 func startNATS(t *testing.T) string {
 	t.Helper()
 	accounts, err := os.ReadFile(filepath.Join("..", "..", "deploy", "nats", "accounts.conf.example"))

@@ -18,6 +18,11 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+const (
+	appDirName       = "wormhole"
+	quietHoursLayout = "15:04"
+)
+
 // Delivery modes for inbound asks from a sender.
 const (
 	ModeInbox = "inbox"
@@ -205,10 +210,10 @@ func Dir() string {
 		return d
 	}
 	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "wormhole")
+		return filepath.Join(x, appDirName)
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "wormhole")
+	return filepath.Join(home, ".config", appDirName)
 }
 
 // StateDir returns the state directory, honoring XDG_STATE_HOME.
@@ -217,10 +222,10 @@ func StateDir() string {
 		return d
 	}
 	if x := os.Getenv("XDG_STATE_HOME"); x != "" {
-		return filepath.Join(x, "wormhole")
+		return filepath.Join(x, appDirName)
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "state", "wormhole")
+	return filepath.Join(home, ".local", "state", appDirName)
 }
 
 // DefaultPath is where Load looks when no path is given.
@@ -332,21 +337,23 @@ func (c *Config) applyDefaults() {
 	c.Bus.TLSCA = Expand(c.Bus.TLSCA)
 }
 
+// ptr returns a pointer to v for optional configuration defaults.
 func ptr[T any](v T) *T { return &v }
 
+// validate checks identities, delivery settings, limits, and local paths.
 func (c *Config) validate() error {
 	if !envelope.ValidHandle(c.Handle) {
 		return fmt.Errorf("%w: handle %q must match %s", ErrInvalid, c.Handle, "^[a-z0-9][a-z0-9_-]{0,63}$")
 	}
 	switch c.Bus.Kind {
-	case "nats", "memory":
+	case DefaultBusKind, "memory":
 	default:
 		return fmt.Errorf("%w: bus.kind %q (want nats or memory)", ErrInvalid, c.Bus.Kind)
 	}
-	if c.Bus.Kind == "nats" && c.Bus.URL == "" {
+	if c.Bus.Kind == DefaultBusKind && c.Bus.URL == "" {
 		return fmt.Errorf("%w: bus.url is required", ErrInvalid)
 	}
-	if c.Bus.Kind == "nats" && c.Bus.Creds == "" && c.Bus.PasswordFile == "" {
+	if c.Bus.Kind == DefaultBusKind && c.Bus.Creds == "" && c.Bus.PasswordFile == "" {
 		return fmt.Errorf("%w: bus needs creds or password_file", ErrInvalid)
 	}
 	if c.Bus.User != "" && c.Bus.User != c.Handle {
@@ -394,7 +401,7 @@ func (c *Config) validate() error {
 	case 0:
 	case 2:
 		for _, h := range c.Daemon.QuietHours {
-			if _, err := time.Parse("15:04", h); err != nil {
+			if _, err := time.Parse(quietHoursLayout, h); err != nil {
 				return fmt.Errorf("%w: daemon.quiet_hours %q is not HH:MM", ErrInvalid, h)
 			}
 		}
@@ -493,8 +500,9 @@ func (d Daemon) InQuietHours(now time.Time) bool {
 	return cur >= start || cur < end
 }
 
+// minuteOfDay converts an HH:MM value to minutes after midnight.
 func minuteOfDay(hhmm string) int {
-	t, _ := time.Parse("15:04", hhmm)
+	t, _ := time.Parse(quietHoursLayout, hhmm)
 	return t.Hour()*60 + t.Minute()
 }
 

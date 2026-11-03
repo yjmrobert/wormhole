@@ -32,6 +32,14 @@ import (
 	"github.com/yuin/goldmark/util"
 )
 
+const (
+	assetsDirName     = "assets"
+	markdownExtension = ".md"
+	notFoundFileName  = "404.html"
+	svgCircleFormat   = `<circle cx="%.0f" cy="%.0f" r="%.1f" opacity="%.2f"/>`
+	svgPointFormat    = "%s%.0f %.0f"
+)
+
 // Sheet is one page of the site: a Markdown source and where it lands.
 type Sheet struct {
 	Slug    string // "" for the home sheet
@@ -159,16 +167,16 @@ func build(root, out, base, version, repo string, now time.Time) error {
 		}
 	}
 	var buf bytes.Buffer
-	if err := tpl.ExecuteTemplate(&buf, "404.html", pageData{Site: site}); err != nil {
+	if err := tpl.ExecuteTemplate(&buf, notFoundFileName, pageData{Site: site}); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(out, "404.html"), buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, notFoundFileName), buf.Bytes(), 0o644); err != nil {
 		return err
 	}
 	if err := writeSearchIndex(filepath.Join(out, "search.json"), site); err != nil {
 		return err
 	}
-	if err := copyAssets(filepath.Join(out, "assets")); err != nil {
+	if err := copyAssets(filepath.Join(out, assetsDirName)); err != nil {
 		return err
 	}
 	// GitHub Pages must not run Jekyll over the output.
@@ -200,10 +208,10 @@ func (l linkRewriter) Transform(doc *ast.Document, reader text.Reader, pc parser
 			return ast.WalkContinue, nil
 		}
 		path, frag, _ := strings.Cut(dest, "#")
-		if !strings.HasSuffix(path, ".md") {
+		if !strings.HasSuffix(path, markdownExtension) {
 			return ast.WalkContinue, nil
 		}
-		slug := strings.TrimSuffix(filepath.Base(path), ".md")
+		slug := strings.TrimSuffix(filepath.Base(path), markdownExtension)
 		if slug == "index" {
 			slug = ""
 		}
@@ -219,6 +227,7 @@ func (l linkRewriter) Transform(doc *ast.Document, reader text.Reader, pc parser
 	})
 }
 
+// newMarkdown configures Markdown parsing, highlighting, and link rewriting.
 func newMarkdown(base string) goldmark.Markdown {
 	return goldmark.New(
 		goldmark.WithExtensions(
@@ -298,6 +307,7 @@ func render(src []byte, s Sheet, base string) (*Rendered, error) {
 	return r, nil
 }
 
+// bytesOf converts a byte slice or string attribute to a string.
 func bytesOf(v any) string {
 	switch b := v.(type) {
 	case []byte:
@@ -349,6 +359,7 @@ type searchEntry struct {
 	Text     string    `json:"text"`
 }
 
+// writeSearchIndex writes the site's searchable page metadata as JSON.
 func writeSearchIndex(path string, site Site) error {
 	var entries []searchEntry
 	for _, r := range site.Sheets {
@@ -361,12 +372,13 @@ func writeSearchIndex(path string, site Site) error {
 	return os.WriteFile(path, b, 0o644)
 }
 
+// copyAssets copies embedded static assets into the output directory.
 func copyAssets(dst string) error {
-	return fs.WalkDir(assets, "assets", func(p string, d fs.DirEntry, err error) error {
+	return fs.WalkDir(assets, assetsDirName, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel := strings.TrimPrefix(p, "assets")
+		rel := strings.TrimPrefix(p, assetsDirName)
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
@@ -398,9 +410,9 @@ func starField(seed int64) template.HTML {
 			y := rng.Float64() * 1600
 			r := l.rmin + rng.Float64()*(l.rmax-l.rmin)
 			o := 0.35 + rng.Float64()*0.55
-			fmt.Fprintf(&b, `<circle cx="%.0f" cy="%.0f" r="%.1f" opacity="%.2f"/>`, x, y, r, o)
+			fmt.Fprintf(&b, svgCircleFormat, x, y, r, o)
 			// The layer repeats one tile height down so the drift wraps.
-			fmt.Fprintf(&b, `<circle cx="%.0f" cy="%.0f" r="%.1f" opacity="%.2f"/>`, x, y+1600, r, o)
+			fmt.Fprintf(&b, svgCircleFormat, x, y+1600, r, o)
 		}
 		b.WriteString(`</g>`)
 	}
@@ -431,7 +443,7 @@ func hero() template.HTML {
 		fmt.Fprintf(&b, `<path class="mx" style="--k:%.2f" d="`, float64(j)/ny)
 		for i := 0; i <= nx; i++ {
 			x, y := point(i, j)
-			fmt.Fprintf(&b, "%s%.0f %.0f", map[bool]string{true: "M", false: "L"}[i == 0], x, y)
+			fmt.Fprintf(&b, svgPointFormat, map[bool]string{true: "M", false: "L"}[i == 0], x, y)
 		}
 		b.WriteString(`"/>`)
 	}
@@ -439,7 +451,7 @@ func hero() template.HTML {
 		b.WriteString(`<path class="my" d="`)
 		for j := 0; j <= ny; j++ {
 			x, y := point(i, j)
-			fmt.Fprintf(&b, "%s%.0f %.0f", map[bool]string{true: "M", false: "L"}[j == 0], x, y)
+			fmt.Fprintf(&b, svgPointFormat, map[bool]string{true: "M", false: "L"}[j == 0], x, y)
 		}
 		b.WriteString(`"/>`)
 	}

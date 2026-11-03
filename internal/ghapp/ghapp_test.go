@@ -36,6 +36,7 @@ func TestSessionName(t *testing.T) {
 	}
 }
 
+// TestDeepLinkIsIsolatedHere verifies the URL scheme stays within this package.
 func TestDeepLinkIsIsolatedHere(t *testing.T) {
 	if DeepLink("abc") != "ghapp://sessions/abc" {
 		t.Fatal(DeepLink("abc"))
@@ -165,6 +166,7 @@ func TestNotifyArguments(t *testing.T) {
 	}
 }
 
+// TestParseNotifyOutput verifies notification ID and action parsing.
 func TestParseNotifyOutput(t *testing.T) {
 	if r := parseNotifyOutput("17\n"); r.ID != 17 || r.Action != "" {
 		t.Fatalf("%+v", r)

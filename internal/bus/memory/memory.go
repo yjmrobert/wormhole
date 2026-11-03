@@ -26,6 +26,7 @@ import (
 const (
 	DefaultMaxDeliver = 5
 	DefaultAckWait    = 30 * time.Second
+	brokerClosed      = "broker closed"
 )
 
 // Broker is the in-process server.
@@ -89,6 +90,7 @@ func (b *Broker) queueFor(user string) *queue {
 	return q
 }
 
+// signal wakes the queue's delivery loop without blocking.
 func (q *queue) signal() {
 	select {
 	case q.wake <- struct{}{}:
@@ -123,7 +125,7 @@ func (b *Broker) Connect(user string) (bus.Bus, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
-		return nil, errors.New("broker closed")
+		return nil, errors.New(brokerClosed)
 	}
 	b.queueFor(user)
 	return &conn{broker: b, user: user, inflight: map[bus.MessageID]*message{}}, nil
@@ -147,8 +149,10 @@ type conn struct {
 	closed   bool
 }
 
+// User returns the handle authenticated for this connection.
 func (c *conn) User() string { return c.user }
 
+// Publish validates and durably queues an envelope on subject.
 func (c *conn) Publish(ctx context.Context, subject string, env envelope.Envelope) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -171,7 +175,7 @@ func (c *conn) Publish(ctx context.Context, subject string, env envelope.Envelop
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
-		return errors.New("broker closed")
+		return errors.New(brokerClosed)
 	}
 	if p.Kind == bus.KindDLQ {
 		b.dlq[p.To] = append(b.dlq[p.To], decoded)
@@ -189,12 +193,14 @@ type subscription struct {
 	done   chan struct{}
 }
 
+// Stop cancels the subscription and waits for its delivery loop to exit.
 func (s *subscription) Stop() error {
 	s.cancel()
 	<-s.done
 	return nil
 }
 
+// Subscribe starts delivering the user's queued messages to h.
 func (c *conn) Subscribe(ctx context.Context, h bus.Handler) (bus.Subscription, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &subscription{cancel: cancel, done: make(chan struct{})}
@@ -293,6 +299,7 @@ func (c *conn) loop(ctx context.Context, h bus.Handler, done chan struct{}) {
 	}
 }
 
+// remove returns ms without m while preserving the order of other messages.
 func remove(ms []*message, m *message) []*message {
 	out := ms[:0]
 	for _, x := range ms {
@@ -303,6 +310,7 @@ func remove(ms []*message, m *message) []*message {
 	return out
 }
 
+// take removes and returns the in-flight message identified by id.
 func (c *conn) take(id bus.MessageID) (*message, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -314,6 +322,7 @@ func (c *conn) take(id bus.MessageID) (*message, error) {
 	return m, nil
 }
 
+// Ack acknowledges and permanently removes a delivery from the queue.
 func (c *conn) Ack(ctx context.Context, id bus.MessageID) error {
 	m, err := c.take(id)
 	if err != nil {
@@ -328,6 +337,7 @@ func (c *conn) Ack(ctx context.Context, id bus.MessageID) error {
 	return nil
 }
 
+// Nak schedules an in-flight delivery for redelivery after delay.
 func (c *conn) Nak(ctx context.Context, id bus.MessageID, delay time.Duration) error {
 	m, err := c.take(id)
 	if err != nil {
@@ -342,8 +352,10 @@ func (c *conn) Nak(ctx context.Context, id bus.MessageID, delay time.Duration) e
 	return nil
 }
 
+// Registry returns the broker-backed presence directory.
 func (c *conn) Registry() bus.Registry { return registry{c.broker} }
 
+// Close marks the connection closed.
 func (c *conn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -353,6 +365,7 @@ func (c *conn) Close() error {
 
 type registry struct{ b *Broker }
 
+// Put validates and stores a presence entry by handle.
 func (r registry) Put(ctx context.Context, p bus.Presence) error {
 	if !envelope.ValidHandle(p.Handle) {
 		return fmt.Errorf("%w: %q", envelope.ErrHandle, p.Handle)
@@ -363,6 +376,7 @@ func (r registry) Put(ctx context.Context, p bus.Presence) error {
 	return nil
 }
 
+// List returns all presence entries sorted by handle.
 func (r registry) List(ctx context.Context) ([]bus.Presence, error) {
 	r.b.mu.Lock()
 	defer r.b.mu.Unlock()
