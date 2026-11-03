@@ -345,6 +345,7 @@ func TestForceBypassesPolicy(t *testing.T) {
 	}
 }
 
+// TestChecksumMismatchLeavesExecutableUnchanged verifies digest failures cannot replace the binary.
 func TestChecksumMismatchLeavesExecutableUnchanged(t *testing.T) {
 	archive := makeArchive(t, tarEntry{name: binaryName, body: "new binary"})
 	f := newFakeGitHub(t, "v1.1.0", archive)
@@ -361,6 +362,7 @@ func TestChecksumMismatchLeavesExecutableUnchanged(t *testing.T) {
 	assertNoTemporaryFiles(t, filepath.Dir(exe))
 }
 
+// TestSuccessfulReplacementResolvesSymlink verifies atomic replacement preserves links and executable modes.
 func TestSuccessfulReplacementResolvesSymlink(t *testing.T) {
 	archive := makeArchive(t,
 		tarEntry{name: "README.md", body: "documentation"},
@@ -401,6 +403,7 @@ func TestSuccessfulReplacementResolvesSymlink(t *testing.T) {
 	assertNoTemporaryFiles(t, filepath.Dir(exe))
 }
 
+// TestStateModesAndPersistence verifies private state permissions and saved preferences.
 func TestStateModesAndPersistence(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix permission modes")
@@ -444,6 +447,7 @@ func TestStateModesAndPersistence(t *testing.T) {
 	}
 }
 
+// TestBadArchivesLeaveExecutableUnchanged verifies unsafe or invalid archives fail atomically.
 func TestBadArchivesLeaveExecutableUnchanged(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -490,6 +494,7 @@ func TestBadArchivesLeaveExecutableUnchanged(t *testing.T) {
 	}
 }
 
+// TestUnwritableDestinationLeavesExecutableUnchanged verifies failed replacement preserves the old binary.
 func TestUnwritableDestinationLeavesExecutableUnchanged(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("requires a non-root Unix user")
@@ -512,6 +517,7 @@ func TestUnwritableDestinationLeavesExecutableUnchanged(t *testing.T) {
 	}
 }
 
+// TestSemanticVersionOrdering verifies precedence, build metadata, and invalid versions.
 func TestSemanticVersionOrdering(t *testing.T) {
 	ordered := []string{
 		"1.0.0-alpha",

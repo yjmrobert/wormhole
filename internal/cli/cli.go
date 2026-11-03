@@ -94,8 +94,8 @@ func Default() *App {
 		Now:        time.Now,
 		Hostname:   host,
 		Version:    "dev",
-		Commit:     "unknown",
-		BuildDate:  "unknown",
+		Commit:     unknownMetadata,
+		BuildDate:  unknownMetadata,
 	}
 }
 
@@ -239,7 +239,7 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 // commit returns the commit metadata or its stable unknown fallback.
 func (a *App) commit() string {
 	if a.Commit == "" {
-		return "unknown"
+		return unknownMetadata
 	}
 	return a.Commit
 }
@@ -247,7 +247,7 @@ func (a *App) commit() string {
 // buildDate returns the build timestamp or its stable unknown fallback.
 func (a *App) buildDate() string {
 	if a.BuildDate == "" {
-		return "unknown"
+		return unknownMetadata
 	}
 	return a.BuildDate
 }

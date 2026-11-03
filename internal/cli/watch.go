@@ -55,6 +55,8 @@ func (a *App) watch(ctx context.Context, c *common) error {
 
 type watchMode int
 
+const clockLayout = "15:04"
+
 const (
 	watchBrowse watchMode = iota
 	watchSnoozeInput
@@ -281,7 +283,7 @@ func (w *watcher) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			w.status = "declining..."
 			return w, w.declineCmd(t, reason)
 		}
-		w.status = "not declined; it stays in the inbox"
+		w.status = notDeclinedMessage
 		w.endInput()
 		return w, nil
 	}
@@ -549,7 +551,7 @@ func (w *watcher) View() tea.View {
 		}
 	}
 
-	lines := []string{clip(fmt.Sprintf("WORMHOLE INBOX  ^%s · %d waiting · %d snoozed · %s", w.cfg.Handle, waiting, snoozed, now.Format("15:04")), w.width)}
+	lines := []string{clip(fmt.Sprintf("WORMHOLE INBOX  ^%s · %d waiting · %d snoozed · %s", w.cfg.Handle, waiting, snoozed, now.Format(clockLayout)), w.width)}
 	if len(w.items) == 0 {
 		lines = append(lines, "", "  inbox empty; new messages appear here as they arrive")
 	} else {
@@ -563,7 +565,7 @@ func (w *watcher) View() tea.View {
 			}
 			when := ago(t.LastMessageAt, now)
 			if t.Snoozed(now) {
-				when = "snoozed until " + t.SnoozedUntil.Local().Format("15:04")
+				when = "snoozed until " + t.SnoozedUntil.Local().Format(clockLayout)
 			}
 			id := t.ID
 			if w.width < 120 {

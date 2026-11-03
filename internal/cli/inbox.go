@@ -25,7 +25,7 @@ func (a *App) stagedThread(ctx context.Context, store *threads.Store, id string)
 	}
 	t, err := store.Get(ctx, id)
 	if err != nil {
-		return threads.Thread{}, fail(ExitNotFound, "thread %s is not on this machine", id)
+		return threads.Thread{}, fail(ExitNotFound, threadNotFoundFormat, id)
 	}
 	if t.StagedKickoff == "" {
 		return threads.Thread{}, fail(ExitRefused, "nothing is waiting on thread %s (state %s)", id, t.State)
@@ -101,7 +101,7 @@ func (a *App) snoozeThread(ctx context.Context, store *threads.Store, t threads.
 	}
 	res := snoozeResult{OK: true, ThreadID: t.ID}
 	if !until.IsZero() {
-		res.SnoozedUntil = until.UTC().Format("2006-01-02T15:04:05Z")
+		res.SnoozedUntil = until.UTC().Format(utcTimestampLayout)
 	}
 	return res, nil
 }
@@ -147,7 +147,7 @@ func (a *App) newDeclineCommand(c *common) *cobra.Command {
 		}
 		if !yes {
 			if c.noInput {
-				return fail(ExitRefused, "--no-input forbids confirmation prompts; review the message and rerun with --yes")
+				return fail(ExitRefused, noInputReviewMessage)
 			}
 			if !a.IsTerminal() {
 				return fail(ExitRefused, "not a terminal: confirm with the person, then rerun with --yes")
@@ -157,7 +157,7 @@ func (a *App) newDeclineCommand(c *common) *cobra.Command {
 				return err
 			}
 			if !ok {
-				return fail(ExitRefused, "not declined; it stays in the inbox")
+				return fail(ExitRefused, notDeclinedMessage)
 			}
 		}
 		res, err := a.declineThread(cmd.Context(), cfg, store, t, reason)
@@ -181,7 +181,7 @@ func declinePrompt(t threads.Thread, reason string) string {
 func (a *App) declineThread(ctx context.Context, cfg *config.Config, store *threads.Store, t threads.Thread, reason string) (declineResult, error) {
 	b, err := a.NewBus(ctx, cfg)
 	if err != nil {
-		return declineResult{}, fail(ExitUnavailable, "bus: %v", err)
+		return declineResult{}, fail(ExitUnavailable, busErrorFormat, err)
 	}
 	defer b.Close()
 	ack, err := daemon.Decline(ctx, b, store, a.me(cfg), t, reason, a.Now())

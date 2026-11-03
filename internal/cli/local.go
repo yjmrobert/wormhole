@@ -165,7 +165,7 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 	cmd.Args = exactArgs(1, "wormhole open <thread_id>")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if !envelope.ValidID(args[0]) {
-			return fail(ExitNotFound, "%q is not a thread id", args[0])
+			return fail(ExitNotFound, invalidThreadIDFormat, args[0])
 		}
 		cfg, err := a.loadConfig(c)
 		if err != nil {
@@ -178,7 +178,7 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 		defer store.Close()
 		t, err := store.Get(cmd.Context(), args[0])
 		if err != nil {
-			return fail(ExitNotFound, "thread %s is not on this machine", args[0])
+			return fail(ExitNotFound, threadNotFoundFormat, args[0])
 		}
 		if t.StagedKickoff == "" && t.LocalSessionID == "" {
 			return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
@@ -209,7 +209,7 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 					return err
 				}
 				if !ok {
-					return fail(ExitRefused, "not started; it stays in the inbox")
+					return fail(ExitRefused, notStartedMessage)
 				}
 			}
 		}
@@ -286,7 +286,7 @@ func (a *App) newThreadsCommand(c *common) *cobra.Command {
 	cmd.Args = noArgs("wormhole threads [--open] [--peer <user>]")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if peer != "" && !envelope.ValidHandle(peer) {
-			return fail(ExitNotFound, "%q is not a valid handle", peer)
+			return fail(ExitNotFound, invalidHandleFormat, peer)
 		}
 		store, err := a.OpenStore()
 		if err != nil {
@@ -344,7 +344,7 @@ func (a *App) newUsersCommand(c *common) *cobra.Command {
 		}
 		b, err := a.NewBus(cmd.Context(), cfg)
 		if err != nil {
-			return fail(ExitUnavailable, "bus: %v", err)
+			return fail(ExitUnavailable, busErrorFormat, err)
 		}
 		defer b.Close()
 		list, err := b.Registry().List(cmd.Context())

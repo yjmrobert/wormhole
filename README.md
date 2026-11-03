@@ -102,6 +102,7 @@ wormhole login [--creds <file>]                # install credentials privately
 wormhole admin init --url <nats url>           # create the stream and registry bucket
 wormhole completion bash|zsh|fish              # generate shell completion
 wormhole commands [--flags] [--json]           # discover commands and flags
+wormhole man                                   # generate the command manual
 wormhole update [--enable|--disable]           # update now or control daily checks
 ```
 

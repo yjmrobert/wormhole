@@ -24,6 +24,12 @@ const SessionEnv = "COPILOT_AGENT_SESSION_ID"
 // together whenever the skill's CLI contract changes.
 const SkillVersion = "0.4.0"
 
+const (
+	forceUnsafeHelp  = "send even if the body looks like it contains secrets"
+	skillVersionHelp = "version of the skill producing this message"
+	yesHelp          = "skip the confirmation (sets human_reviewed: false)"
+)
+
 // sendResult is the JSON shape of ask, reply and send.
 type sendResult struct {
 	OK            bool   `json:"ok"`
@@ -92,7 +98,7 @@ func (a *App) publish(ctx context.Context, c *common, cfg *config.Config, store 
 	}
 	b, err := a.NewBus(ctx, cfg)
 	if err != nil {
-		return fail(ExitUnavailable, "bus: %v", err)
+		return fail(ExitUnavailable, busErrorFormat, err)
 	}
 	defer b.Close()
 	var online *bool
@@ -138,15 +144,15 @@ func (a *App) newAskCommand(c *common) *cobra.Command {
 	cmd := command("ask <user> <prompt>", "Open a thread with a colleague")
 	cmd.Flags().StringVar(&repo, "repo", "", "owner/name the question is about")
 	cmd.Flags().StringVar(&ref, "context", "", "short pointer such as 'PR #123'")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (sets human_reviewed: false)")
-	cmd.Flags().BoolVar(&force, "force-unsafe", false, "send even if the body looks like it contains secrets")
-	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, "version of the skill producing this message")
+	cmd.Flags().BoolVar(&yes, "yes", false, yesHelp)
+	cmd.Flags().BoolVar(&force, "force-unsafe", false, forceUnsafeHelp)
+	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, skillVersionHelp)
 	cmd.Flags().StringVar(&session, "session", "", "id of the Copilot session asking (default: $"+SessionEnv+"); the reply is appended to it")
 	cmd.Args = exactArgs(2, `wormhole ask <user> "<prompt>"`)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		to := args[0]
 		if !envelope.ValidHandle(to) {
-			return fail(ExitNotFound, "%q is not a valid handle", to)
+			return fail(ExitNotFound, invalidHandleFormat, to)
 		}
 		cfg, err := a.loadConfig(c)
 		if err != nil {
@@ -188,7 +194,7 @@ func (a *App) newAskCommand(c *common) *cobra.Command {
 // followUp is shared by reply and send.
 func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, threadID, peer, text string, yes, force bool, skillV string) error {
 	if !envelope.ValidID(threadID) {
-		return fail(ExitNotFound, "%q is not a thread id", threadID)
+		return fail(ExitNotFound, invalidThreadIDFormat, threadID)
 	}
 	cfg, err := a.loadConfig(c)
 	if err != nil {
@@ -208,7 +214,7 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 	defer store.Close()
 	t, err := store.Get(ctx, threadID)
 	if err != nil {
-		return fail(ExitNotFound, "thread %s is not on this machine", threadID)
+		return fail(ExitNotFound, threadNotFoundFormat, threadID)
 	}
 	if peer != "" && peer != t.Peer {
 		return fail(ExitNotFound, "thread %s is with ^%s, not ^%s", threadID, t.Peer, peer)
@@ -247,9 +253,9 @@ func (a *App) newReplyCommand(c *common) *cobra.Command {
 	var yes, force bool
 	var skillV string
 	cmd := command("reply <thread_id> <text>", "Reply on a thread")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (sets human_reviewed: false)")
-	cmd.Flags().BoolVar(&force, "force-unsafe", false, "send even if the body looks like it contains secrets")
-	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, "version of the skill producing this message")
+	cmd.Flags().BoolVar(&yes, "yes", false, yesHelp)
+	cmd.Flags().BoolVar(&force, "force-unsafe", false, forceUnsafeHelp)
+	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, skillVersionHelp)
 	cmd.Args = exactArgs(2, `wormhole reply <thread_id> "<text>"`)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return a.followUp(cmd.Context(), c, envelope.TypeReply, args[0], "", args[1], yes, force, skillV)
@@ -263,9 +269,9 @@ func (a *App) newSendCommand(c *common) *cobra.Command {
 	var yes, force bool
 	cmd := command("send <user> <text>", "Send a follow-up on an open thread")
 	cmd.Flags().StringVar(&thread, "thread", "", "open thread to send on")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (sets human_reviewed: false)")
-	cmd.Flags().BoolVar(&force, "force-unsafe", false, "send even if the body looks like it contains secrets")
-	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, "version of the skill producing this message")
+	cmd.Flags().BoolVar(&yes, "yes", false, yesHelp)
+	cmd.Flags().BoolVar(&force, "force-unsafe", false, forceUnsafeHelp)
+	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, skillVersionHelp)
 	cmd.Args = exactArgs(2, `wormhole send <user> --thread <id> "<text>"`)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if thread == "" {
