@@ -72,9 +72,11 @@ systemctl --user enable --now wormhole
 ### Updates
 
 `wormhole update` checks GitHub Releases and installs a newer binary after
-verifying its SHA-256 checksum against the release's `checksums.txt`. Automatic
-checks are opt-in and run at most once every 24 hours on eligible interactive
-commands:
+verifying its SHA-256 checksum against the release's `checksums.txt`. The
+checksum guards against a corrupt download, not against a bad release: both
+files come from the same GitHub release, and releases are not signed.
+Automatic checks are opt-in and run at most once every 24 hours on eligible
+interactive commands:
 
 ```sh
 wormhole update --enable    # enable daily automatic checks
@@ -82,13 +84,32 @@ wormhole update --disable   # disable them; manual updates still work
 wormhole update             # check now, regardless of the automatic setting
 ```
 
+Check that self-update can work on your machine before enabling automatic
+checks. `--enable` does not check this for you, and an update that can never
+succeed prints an error on every daily attempt:
+
+- Self-update supports the release binaries for Linux amd64 and arm64 only.
+  A binary from `go install` or for another platform is updated the way it
+  was installed.
+- The directory holding the `wormhole` executable must be writable by the
+  user running it. A root-owned `/usr/local/bin/wormhole` cannot update
+  itself; `~/.local/bin/wormhole` can.
+
+An automatic check has a 30 second budget for the release lookup, the
+download and the install together, and a failed attempt is not retried for
+24 hours. On a slow connection run `wormhole update` by hand instead; it has
+no such limit.
+
 Set `WORMHOLE_NO_UPDATE_CHECK=1` to suppress automatic checks without changing
-the saved setting. Development builds, `--json`, shell completion, command
-discovery, and the long-running daemon never trigger an automatic replacement.
-Update state lives in the Wormhole XDG state directory. If the executable's
-directory is not writable, the command fails with a permission error and leaves
-the current binary untouched; reinstall it manually using the release steps in
-section 2. Restart the daemon after updating its binary:
+the saved setting. Development builds, `--json`, `--no-input`, shell
+completion, command discovery, and the long-running daemon never trigger an
+automatic replacement. Update state lives in `update.json` in the Wormhole
+state directory (`$WORMHOLE_STATE_DIR`, else `$XDG_STATE_HOME/wormhole`,
+default `~/.local/state/wormhole`); any interactive command creates that
+directory and keeps it owner-only, whether or not checks are enabled. If the
+executable's directory is not writable, the command fails with a permission
+error and leaves the current binary untouched; reinstall it manually using
+the release steps in section 2. Restart the daemon after updating its binary:
 
 ```sh
 systemctl --user restart wormhole

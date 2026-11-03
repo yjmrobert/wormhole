@@ -34,4 +34,11 @@ deployments that changed the shipped permissions.
   a credentials file sits inside a git working tree.
 - The binary sends no telemetry. Update checks are opt-in, contact GitHub
   Releases only, and can be disabled with `wormhole update --disable` or
-  `WORMHOLE_NO_UPDATE_CHECK=1`; downloaded archives are checksum-verified.
+  `WORMHOLE_NO_UPDATE_CHECK=1`.
+- A downloaded update is installed only if its SHA-256 matches the
+  release's `checksums.txt`. That guards against a corrupt or truncated
+  download, not against a bad release: the checksums come from the same
+  GitHub release as the archive, and releases are not signed. Anyone who
+  can publish a release on this repository can ship a binary that the
+  updater accepts. If that is not acceptable for your deployment, leave
+  automatic checks off and install from the release page by hand.
