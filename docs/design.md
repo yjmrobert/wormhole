@@ -38,8 +38,11 @@ Rules enforced by code or CI:
 3. `scripts/leakcheck.sh` greps for terms listed in a private
    `.wormhole-forbidden-terms` file; wire it as a pre-commit hook.
 4. The binary sends no telemetry. Bus traffic goes only to the configured
-   URL. Update checks are opt-in and contact GitHub Releases only; downloaded
-   archives are verified against the release checksums before installation.
+   URL. Update checks are opt-in and contact GitHub Releases only; a
+   downloaded archive is verified against the release's `checksums.txt`
+   before installation. That is an integrity check, not a signature: the
+   checksums and the archive come from the same release, which is not
+   signed.
 
 License: Apache-2.0. No CLA. `SECURITY.md` names the private reporting
 channel.
