@@ -69,6 +69,31 @@ systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADD
 systemctl --user enable --now wormhole
 ```
 
+### Updates
+
+`wormhole update` checks GitHub Releases and installs a newer binary after
+verifying its SHA-256 checksum against the release's `checksums.txt`. Automatic
+checks are opt-in and run at most once every 24 hours on eligible interactive
+commands:
+
+```sh
+wormhole update --enable    # enable daily automatic checks
+wormhole update --disable   # disable them; manual updates still work
+wormhole update             # check now, regardless of the automatic setting
+```
+
+Set `WORMHOLE_NO_UPDATE_CHECK=1` to suppress automatic checks without changing
+the saved setting. Development builds, `--json`, shell completion, command
+discovery, and the long-running daemon never trigger an automatic replacement.
+Update state lives in the Wormhole XDG state directory. If the executable's
+directory is not writable, the command fails with a permission error and leaves
+the current binary untouched; reinstall it manually using the release steps in
+section 2. Restart the daemon after updating its binary:
+
+```sh
+systemctl --user restart wormhole
+```
+
 ### The config file
 
 ```yaml

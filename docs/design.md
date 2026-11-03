@@ -37,8 +37,9 @@ Rules enforced by code or CI:
    `nats-server.conf`, `.creds`, `.nk`, `.key` or `.pem` is committed.
 3. `scripts/leakcheck.sh` greps for terms listed in a private
    `.wormhole-forbidden-terms` file; wire it as a pre-commit hook.
-4. The binary never phones home: no telemetry, no update checks. Bus
-   traffic goes only to the configured URL.
+4. The binary sends no telemetry. Bus traffic goes only to the configured
+   URL. Update checks are opt-in and contact GitHub Releases only; downloaded
+   archives are verified against the release checksums before installation.
 
 License: Apache-2.0. No CLA. `SECURITY.md` names the private reporting
 channel.

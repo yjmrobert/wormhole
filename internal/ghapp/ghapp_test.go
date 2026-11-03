@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestNewSessionID verifies UUID version, variant, and uniqueness.
 func TestNewSessionID(t *testing.T) {
 	re := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	seen := map[string]bool{}
@@ -24,6 +25,7 @@ func TestNewSessionID(t *testing.T) {
 	}
 }
 
+// TestSessionName verifies whitespace normalization and rune-limited titles.
 func TestSessionName(t *testing.T) {
 	if got := SessionName("alice", "  What do\nyou think?"); got != "^alice: What do you think?" {
 		t.Fatal(got)
@@ -34,6 +36,7 @@ func TestSessionName(t *testing.T) {
 	}
 }
 
+// TestDeepLinkIsIsolatedHere verifies the URL scheme stays within this package.
 func TestDeepLinkIsIsolatedHere(t *testing.T) {
 	if DeepLink("abc") != "ghapp://sessions/abc" {
 		t.Fatal(DeepLink("abc"))
@@ -163,6 +166,7 @@ func TestNotifyArguments(t *testing.T) {
 	}
 }
 
+// TestParseNotifyOutput verifies notification ID and action parsing.
 func TestParseNotifyOutput(t *testing.T) {
 	if r := parseNotifyOutput("17\n"); r.ID != 17 || r.Action != "" {
 		t.Fatalf("%+v", r)

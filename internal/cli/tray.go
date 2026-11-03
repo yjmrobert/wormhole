@@ -87,6 +87,7 @@ func trayState(ctx context.Context, store *threads.Store, now time.Time) (tray.S
 	return s, nil
 }
 
+// trayFingerprint returns a stable representation of displayed tray state.
 func trayFingerprint(s tray.State) string {
 	var b strings.Builder
 	for _, it := range s.Items {

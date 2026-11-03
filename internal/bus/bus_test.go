@@ -7,6 +7,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+// TestSubjects verifies subject construction and envelope-based routing.
 func TestSubjects(t *testing.T) {
 	if got := InboxSubject("bob", "alice"); got != "wh.inbox.bob.alice" {
 		t.Fatal(got)
@@ -27,6 +28,7 @@ func TestSubjects(t *testing.T) {
 	}
 }
 
+// TestParseSubject verifies valid subjects and rejects malformed ones.
 func TestParseSubject(t *testing.T) {
 	p, err := ParseSubject("wh.inbox.bob.alice")
 	if err != nil || p.Kind != KindInbox || p.To != "bob" || p.From != "alice" {
@@ -43,6 +45,7 @@ func TestParseSubject(t *testing.T) {
 	}
 }
 
+// TestMayPublish verifies that users can publish only on permitted subjects.
 func TestMayPublish(t *testing.T) {
 	ok := []string{"wh.inbox.bob.alice", "wh.ack.bob.alice", "wh.dlq.alice"}
 	for _, s := range ok {

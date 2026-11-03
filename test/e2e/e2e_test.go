@@ -39,6 +39,7 @@ type side struct {
 	session string // the Copilot session the CLI pretends to run in
 }
 
+// cli invokes one side's CLI with JSON output and decodes the result.
 func (s *side) cli(t *testing.T, stdin string, args ...string) (int, map[string]any, string) {
 	t.Helper()
 	var out, errb bytes.Buffer
@@ -68,6 +69,7 @@ func (s *side) cli(t *testing.T, stdin string, args ...string) (int, map[string]
 	return code, parsed, errb.String()
 }
 
+// runDaemon starts a side's daemon and stops it during test cleanup.
 func (s *side) runDaemon(t *testing.T) {
 	t.Helper()
 	store, err := threads.Open(s.dbPath)
@@ -86,6 +88,7 @@ func (s *side) runDaemon(t *testing.T) {
 	t.Cleanup(func() { cancel(); <-done; b.Close(); store.Close() })
 }
 
+// newSide creates an isolated config, store, and app recorder for one user.
 func newSide(t *testing.T, handle, yaml string, newBus func(ctx context.Context, cfg *config.Config) (bus.Bus, error)) *side {
 	t.Helper()
 	dir := t.TempDir()
@@ -103,6 +106,7 @@ func newSide(t *testing.T, handle, yaml string, newBus func(ctx context.Context,
 	return &side{handle: handle, cfgPath: cfgPath, dbPath: filepath.Join(dir, "state", "threads.db"), app: &ghapp.Recorder{}, cfg: cfg, newBus: newBus, session: handle + "-root-session"}
 }
 
+// waitFor polls cond until it succeeds or the test deadline expires.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -115,6 +119,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// threadState loads the current thread from a side's store.
 func threadState(t *testing.T, s *side, id string) threads.Thread {
 	t.Helper()
 	store, err := threads.Open(s.dbPath)
@@ -401,6 +406,7 @@ repos: {"owner/repo": /tmp/wh-e2e/repo}
 daemon: {registry_interval: 1s}
 `
 
+// passwordFile writes a test user's password and returns its path.
 func passwordFile(t *testing.T, user string) string {
 	p := filepath.Join(t.TempDir(), "password")
 	if err := os.WriteFile(p, []byte("CHANGE_ME_"+user+"\n"), 0o600); err != nil {
@@ -409,6 +415,7 @@ func passwordFile(t *testing.T, user string) string {
 	return p
 }
 
+// TestRoundTripMemoryBus runs the complete scenario over the in-memory bus.
 func TestRoundTripMemoryBus(t *testing.T) {
 	broker := memory.NewBroker()
 	defer broker.Close()
@@ -418,6 +425,7 @@ func TestRoundTripMemoryBus(t *testing.T) {
 	roundTrip(t, alice, bob)
 }
 
+// TestRoundTripNATS runs the complete scenario over a local NATS server.
 func TestRoundTripNATS(t *testing.T) {
 	url := startNATS(t)
 	newBus := func(ctx context.Context, cfg *config.Config) (bus.Bus, error) {
@@ -428,6 +436,7 @@ func TestRoundTripNATS(t *testing.T) {
 	roundTrip(t, alice, bob)
 }
 
+// startNATS starts and configures an isolated NATS server for the test.
 func startNATS(t *testing.T) string {
 	t.Helper()
 	accounts, err := os.ReadFile(filepath.Join("..", "..", "deploy", "nats", "accounts.conf.example"))

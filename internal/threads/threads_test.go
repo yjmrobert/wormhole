@@ -13,6 +13,7 @@ import (
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
+// open creates a temporary thread store and closes it after the test.
 func open(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(filepath.Join(t.TempDir(), "state", "threads.db"))
@@ -23,6 +24,7 @@ func open(t *testing.T) *Store {
 	return s
 }
 
+// TestThreadLifecycle verifies thread updates, message storage, and open filtering.
 func TestThreadLifecycle(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
@@ -81,6 +83,7 @@ func TestThreadLifecycle(t *testing.T) {
 	}
 }
 
+// TestCountInboundAndExpire verifies inbound rate-limit counts and stale expiry.
 func TestCountInboundAndExpire(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
@@ -118,6 +121,7 @@ func TestCountInboundAndExpire(t *testing.T) {
 	}
 }
 
+// TestSchemaVersion verifies schema stamping and rejection of newer databases.
 func TestSchemaVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "threads.db")
 	s, err := Open(path)
@@ -138,6 +142,7 @@ func TestSchemaVersion(t *testing.T) {
 	}
 }
 
+// TestMigrateFromV1 verifies migration adds snooze support without losing rows.
 func TestMigrateFromV1(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "threads.db")
 	s, err := Open(path)
@@ -175,6 +180,7 @@ func TestMigrateFromV1(t *testing.T) {
 	}
 }
 
+// TestSnooze verifies snooze state, due filtering, and clearing staged messages.
 func TestSnooze(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
@@ -217,6 +223,7 @@ func TestSnooze(t *testing.T) {
 	}
 }
 
+// TestFilePermissions verifies the database is private to its owner.
 func TestFilePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "threads.db")
 	s, err := Open(path)
@@ -233,6 +240,7 @@ func TestFilePermissions(t *testing.T) {
 	}
 }
 
+// TestPreview verifies whitespace normalization and rune-limited truncation.
 func TestPreview(t *testing.T) {
 	if got := Preview("  hello\n  world  ", 80); got != "hello world" {
 		t.Fatal(got)

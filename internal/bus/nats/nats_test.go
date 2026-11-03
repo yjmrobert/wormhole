@@ -65,6 +65,7 @@ func startServer(t *testing.T) (url string) {
 	return srv.ClientURL()
 }
 
+// connect opens a test bus using the user's shipped example credentials.
 func connect(t *testing.T, url, user string) *Bus {
 	t.Helper()
 	b, err := Connect(context.Background(), Options{URL: url, User: user, Password: "CHANGE_ME_" + user, AckWait: 2 * time.Second})
@@ -81,6 +82,7 @@ type collector struct {
 	wake chan struct{}
 }
 
+// wait returns after collecting n deliveries or fails the test on timeout.
 func (c *collector) wait(t *testing.T, n int) []bus.Delivery {
 	t.Helper()
 	deadline := time.After(10 * time.Second)
@@ -100,10 +102,12 @@ func (c *collector) wait(t *testing.T, n int) []bus.Delivery {
 	}
 }
 
+// ask constructs a test ask with a deterministic host naming convention.
 func ask(from, to, body string) envelope.Envelope {
 	return envelope.NewAsk(envelope.Peer{User: from, Host: from + "-laptop"}, to, body, time.Now())
 }
 
+// TestRoundTripAndAck verifies durable ordered delivery, deduplication, and acks.
 func TestRoundTripAndAck(t *testing.T) {
 	url := startServer(t)
 	alice := connect(t, url, "alice")
@@ -178,6 +182,7 @@ func TestRoundTripAndAck(t *testing.T) {
 	}
 }
 
+// TestServerEnforcesSenderIdentity verifies local and server-side subject ACLs.
 func TestServerEnforcesSenderIdentity(t *testing.T) {
 	url := startServer(t)
 	alice := connect(t, url, "alice")
@@ -223,6 +228,7 @@ func TestServerEnforcesSenderIdentity(t *testing.T) {
 	}
 }
 
+// TestNakRedeliveryAndDLQ verifies retry attempts and dead-letter status.
 func TestNakRedeliveryAndDLQ(t *testing.T) {
 	url := startServer(t)
 	alice := connect(t, url, "alice")
@@ -273,6 +279,7 @@ func TestNakRedeliveryAndDLQ(t *testing.T) {
 	}
 }
 
+// TestRegistry verifies presence reads, ordering data, and write permissions.
 func TestRegistry(t *testing.T) {
 	url := startServer(t)
 	alice := connect(t, url, "alice")

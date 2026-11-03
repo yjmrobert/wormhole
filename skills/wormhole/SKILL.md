@@ -1,6 +1,6 @@
 ---
 name: wormhole
-version: 0.3.0
+version: 0.4.0
 description: Send a question to a colleague's Copilot session on their machine with `^handle` syntax, and answer questions that arrive the same way. Triggers on a `^handle` token (`ask ^bob ...`, `tell ^bob ...`, `^bob can you ...`) or on a session whose first message starts with `[wormhole]`.
 ---
 
@@ -10,7 +10,11 @@ Wormhole opens a thread between this session and a session on another
 person's machine. `wormhole ask` opens one; `wormhole reply` travels back
 through it. Every command takes `--json` and returns a stable exit code
 (0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 bus or app unavailable),
-so always pass `--json` and read the result instead of the prose.
+so always pass `--json` and read the result instead of the prose. When unsure
+of the installed CLI's flags, run `wormhole commands --flags --json`; its
+`schemaVersion` describes the introspection format. Use `--no-input` for
+non-interactive setup commands, but never treat it as confirmation to send or
+run a message.
 
 ## When the user mentions `^handle`
 
@@ -41,7 +45,7 @@ so always pass `--json` and read the result instead of the prose.
 5. **Send.** Run:
 
    ```
-   wormhole ask <handle> "<prompt>" --repo <owner/name> --context "<PR #n or issue>" --yes --json --skill-version 0.3.0
+   wormhole ask <handle> "<prompt>" --repo <owner/name> --context "<PR #n or issue>" --yes --json --skill-version 0.4.0
    ```
 
    Pass the prompt as one argument; use `-` as the prompt and feed stdin for

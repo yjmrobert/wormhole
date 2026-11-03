@@ -3,9 +3,10 @@ package cli
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
+
+	"github.com/spf13/cobra"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
 	"github.com/yjmrobert/wormhole/internal/config"
@@ -29,14 +30,15 @@ type inboxItem struct {
 	Text string `json:"text"`
 }
 
+// inboxItemOf converts a stored thread into the inbox output schema.
 func inboxItemOf(t threads.Thread) inboxItem {
 	kind := "ask"
 	if t.Direction == threads.DirectionOut {
 		kind = "reply"
 	}
-	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format("2006-01-02T15:04:05Z"), Repo: t.Repo, Text: t.StagedKickoff}
+	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format(utcTimestampLayout), Repo: t.Repo, Text: t.StagedKickoff}
 	if !t.SnoozedUntil.IsZero() {
-		it.SnoozedUntil = t.SnoozedUntil.UTC().Format("2006-01-02T15:04:05Z")
+		it.SnoozedUntil = t.SnoozedUntil.UTC().Format(utcTimestampLayout)
 	}
 	return it
 }
@@ -59,58 +61,62 @@ func (a *App) staged(ctx context.Context, store *threads.Store, all bool) ([]thr
 	return out, nil
 }
 
-func (a *App) inbox(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("inbox", flag.ContinueOnError)
-	c.bind(fs)
-	watch := fs.Bool("watch", false, "keep the inbox open in the terminal and act on messages with one key each")
-	ui := fs.Bool("ui", false, "open the inbox page the daemon serves (daemon.inbox_ui) in the browser")
-	all := fs.Bool("all", false, "include snoozed messages")
-	if _, err := a.parse(fs, args); err != nil {
-		return err
-	}
-	if *watch && *ui {
-		return fail(ExitUsage, "--watch and --ui are exclusive")
-	}
-	if *watch {
-		return a.watch(ctx, c)
-	}
-	if *ui {
-		return a.inboxUI(ctx, c)
-	}
-	store, err := a.OpenStore()
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	list, err := a.staged(ctx, store, *all)
-	if err != nil {
-		return err
-	}
-	items := make([]inboxItem, 0, len(list))
-	for _, t := range list {
-		items = append(items, inboxItemOf(t))
-	}
-	a.emit(c, map[string]any{"ok": true, "inbox": items}, func(w io.Writer) {
-		if len(items) == 0 {
-			fmt.Fprintln(w, "inbox empty")
-			return
+// newInboxCommand lists staged messages or opens an interactive inbox view.
+func (a *App) newInboxCommand(c *common) *cobra.Command {
+	var watch, ui, all bool
+	cmd := command("inbox", "List staged messages waiting for review")
+	cmd.Flags().BoolVar(&watch, "watch", false, "keep the inbox open in the terminal and act on messages with one key each")
+	cmd.Flags().BoolVar(&ui, "ui", false, "open the inbox page the daemon serves (daemon.inbox_ui) in the browser")
+	cmd.Flags().BoolVar(&all, "all", false, "include snoozed messages")
+	cmd.Args = noArgs("wormhole inbox [--watch|--ui] [--all]")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if watch && ui {
+			return fail(ExitUsage, "--watch and --ui are exclusive")
 		}
-		rows := make([][]string, len(items))
-		for i, it := range items {
-			when := it.Received
-			if it.SnoozedUntil != "" {
-				when = "snoozed until " + it.SnoozedUntil
+		if watch {
+			if c.noInput {
+				return fail(ExitRefused, "inbox --watch requires interactive input")
 			}
-			rows[i] = []string{it.ThreadID, "^" + it.Peer, it.Kind, when, it.Preview}
+			return a.watch(cmd.Context(), c)
 		}
-		table(w, []string{"THREAD", "FROM", "KIND", "RECEIVED", "PREVIEW"}, rows)
-		fmt.Fprintln(w, "\nopen one with: wormhole open <thread>   hand it to your agent: wormhole open <thread> --agent")
-		fmt.Fprintln(w, "later: wormhole snooze <thread> [2h]      pass: wormhole decline <thread> [\"reason\"]      live view: wormhole inbox --watch")
-	})
-	return nil
+		if ui {
+			return a.inboxUI(cmd.Context(), c)
+		}
+		store, err := a.OpenStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		list, err := a.staged(cmd.Context(), store, all)
+		if err != nil {
+			return err
+		}
+		items := make([]inboxItem, 0, len(list))
+		for _, t := range list {
+			items = append(items, inboxItemOf(t))
+		}
+		a.emit(c, map[string]any{"ok": true, "inbox": items}, func(w io.Writer) {
+			if len(items) == 0 {
+				fmt.Fprintln(w, "inbox empty")
+				return
+			}
+			rows := make([][]string, len(items))
+			for i, it := range items {
+				when := it.Received
+				if it.SnoozedUntil != "" {
+					when = "snoozed until " + it.SnoozedUntil
+				}
+				rows[i] = []string{it.ThreadID, "^" + it.Peer, it.Kind, when, it.Preview}
+			}
+			table(w, []string{"THREAD", "FROM", "KIND", "RECEIVED", "PREVIEW"}, rows)
+			fmt.Fprintln(w, "\nopen one with: wormhole open <thread>   hand it to your agent: wormhole open <thread> --agent")
+			fmt.Fprintln(w, "later: wormhole snooze <thread> [2h]      pass: wormhole decline <thread> [\"reason\"]      live view: wormhole inbox --watch")
+		})
+		return nil
+	}
+	return cmd
 }
 
-// openResult is daemon.OpenResult with the ok field every command prints.
 // inboxUI opens the inbox page a running daemon serves.
 func (a *App) inboxUI(ctx context.Context, c *common) error {
 	cfg, err := a.loadConfig(c)
@@ -143,89 +149,88 @@ func (a *App) inboxUI(ctx context.Context, c *common) error {
 	return nil
 }
 
+// openResult is daemon.OpenResult with the ok field every command prints.
 type openResult struct {
 	OK bool `json:"ok"`
 	daemon.OpenResult
 }
 
-// open runs the staged message for a thread if there is one (appending it
-// to the session that asked, or starting a new session), then shows the
-// session in the app. It always prints the --resume fallback.
-func (a *App) open(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("open", flag.ContinueOnError)
-	c.bind(fs)
-	noStart := fs.Bool("no-start", false, "do not run a staged message; just print it")
-	yes := fs.Bool("yes", false, "run a staged message without showing it first")
-	agent := fs.Bool("agent", false, "run the staged message headless with copilot.safe_tools and extra_args, as auto mode would, instead of with your normal tools")
-	pos, err := a.parse(fs, args)
-	if err != nil {
-		return err
-	}
-	if len(pos) != 1 {
-		return fail(ExitUsage, "usage: wormhole open <thread_id>")
-	}
-	if !envelope.ValidID(pos[0]) {
-		return fail(ExitNotFound, "%q is not a thread id", pos[0])
-	}
-	cfg, err := a.loadConfig(c)
-	if err != nil {
-		return err
-	}
-	store, err := a.OpenStore()
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	t, err := store.Get(ctx, pos[0])
-	if err != nil {
-		return fail(ExitNotFound, "thread %s is not on this machine", pos[0])
-	}
-	if t.StagedKickoff == "" && t.LocalSessionID == "" {
-		return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
-	}
-	if t.StagedKickoff != "" {
-		if *noStart {
-			fmt.Fprintln(a.Stdout, t.StagedKickoff)
-			return nil
+// newOpenCommand runs or prints a staged message and shows its session.
+func (a *App) newOpenCommand(c *common) *cobra.Command {
+	var noStart, yes, agent bool
+	cmd := command("open <thread_id>", "Run a staged message and open its session")
+	cmd.Flags().BoolVar(&noStart, "no-start", false, "do not run a staged message; just print it")
+	cmd.Flags().BoolVar(&yes, "yes", false, "run a staged message without showing it first")
+	cmd.Flags().BoolVar(&agent, "agent", false, "run the staged message headless with copilot.safe_tools and extra_args, as auto mode would, instead of with your normal tools")
+	cmd.Args = exactArgs(1, "wormhole open <thread_id>")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if !envelope.ValidID(args[0]) {
+			return fail(ExitNotFound, invalidThreadIDFormat, args[0])
 		}
-		if err := a.checkAgentProfile(cfg, *agent); err != nil {
+		cfg, err := a.loadConfig(c)
+		if err != nil {
 			return err
 		}
-		// Inbox mode's promise is that a person reads inbound text before
-		// any tool runs on it. The message runs with the person's normal
-		// tool set (or, with --agent, the auto-mode profile they chose),
-		// so the person, not an agent, has to be the one asking: show it
-		// and confirm, and off a terminal require --yes.
-		if !*yes {
-			if !a.IsTerminal() {
-				return fail(ExitRefused, "not a terminal: show the staged message to the person (wormhole open --no-start), then rerun with --yes")
+		store, err := a.OpenStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		t, err := store.Get(cmd.Context(), args[0])
+		if err != nil {
+			return fail(ExitNotFound, threadNotFoundFormat, args[0])
+		}
+		if t.StagedKickoff == "" && t.LocalSessionID == "" {
+			return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
+		}
+		if t.StagedKickoff != "" {
+			if noStart {
+				fmt.Fprintln(a.Stdout, t.StagedKickoff)
+				return nil
 			}
-			fmt.Fprintf(a.Stdout, "%s\n\n", t.StagedKickoff)
-			ok, err := a.confirm(openPrompt(t, *agent))
-			if err != nil {
+			if err := a.checkAgentProfile(cfg, agent); err != nil {
 				return err
 			}
-			if !ok {
-				return fail(ExitRefused, "not started; it stays in the inbox")
+			// Inbox mode's promise is that a person reads inbound text before
+			// any tool runs on it. The message runs with the person's normal
+			// tool set (or, with --agent, the auto-mode profile they chose),
+			// so the person, not an agent, has to be the one asking: show it
+			// and confirm, and off a terminal require --yes.
+			if !yes {
+				if c.noInput {
+					return fail(ExitRefused, "--no-input forbids confirmation prompts; review the staged message and rerun with --yes")
+				}
+				if !a.IsTerminal() {
+					return fail(ExitRefused, "not a terminal: show the staged message to the person (wormhole open --no-start), then rerun with --yes")
+				}
+				fmt.Fprintf(a.Stdout, "%s\n\n", t.StagedKickoff)
+				ok, err := a.confirm(openPrompt(t, agent))
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return fail(ExitRefused, notStartedMessage)
+				}
 			}
 		}
-	}
-	res, err := a.openThread(ctx, c, cfg, store, t, *agent)
-	if err != nil {
-		return err
-	}
-	a.emit(c, res, func(w io.Writer) {
-		if res.Resumed {
-			fmt.Fprintf(w, "appended the message to session %s\n", res.SessionID)
+		res, err := a.openThread(cmd.Context(), c, cfg, store, t, agent)
+		if err != nil {
+			return err
 		}
-		if res.Opened {
-			fmt.Fprintf(w, "opened session %s in the app\n", res.SessionID)
-		} else {
-			fmt.Fprintf(w, "could not open the app (%s)\n", res.OpenError)
-		}
-		fmt.Fprintf(w, "fallback: %s\n", res.Fallback)
-	})
-	return nil
+		a.emit(c, res, func(w io.Writer) {
+			if res.Resumed {
+				fmt.Fprintf(w, "appended the message to session %s\n", res.SessionID)
+			}
+			if res.Opened {
+				fmt.Fprintf(w, "opened session %s in the app\n", res.SessionID)
+			} else {
+				fmt.Fprintf(w, "could not open the app (%s)\n", res.OpenError)
+			}
+			fmt.Fprintf(w, "fallback: %s\n", res.Fallback)
+		})
+		return nil
+	}
+	return cmd
 }
 
 // openPrompt is the confirmation a person answers before a staged message
@@ -271,53 +276,56 @@ func (a *App) openThread(ctx context.Context, c *common, cfg *config.Config, sto
 	return out, nil
 }
 
-func (a *App) threads(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("threads", flag.ContinueOnError)
-	c.bind(fs)
-	open := fs.Bool("open", false, "only threads that still expect traffic")
-	peer := fs.String("peer", "", "only threads with this handle")
-	if _, err := a.parse(fs, args); err != nil {
-		return err
-	}
-	if *peer != "" && !envelope.ValidHandle(*peer) {
-		return fail(ExitNotFound, "%q is not a valid handle", *peer)
-	}
-	store, err := a.OpenStore()
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	_, _ = store.ExpireStale(ctx, a.Now())
-	list, err := store.List(ctx, threads.Filter{Open: *open, Peer: *peer})
-	if err != nil {
-		return err
-	}
-	if list == nil {
-		list = []threads.Thread{}
-	}
-	a.emit(c, map[string]any{"ok": true, "threads": list}, func(w io.Writer) {
-		if len(list) == 0 {
-			fmt.Fprintln(w, "no threads")
-			return
+// newThreadsCommand lists and filters locally stored threads.
+func (a *App) newThreadsCommand(c *common) *cobra.Command {
+	var open bool
+	var peer string
+	cmd := command("threads", "List local threads")
+	cmd.Flags().BoolVar(&open, "open", false, "only threads that still expect traffic")
+	cmd.Flags().StringVar(&peer, "peer", "", "only threads with this handle")
+	cmd.Args = noArgs("wormhole threads [--open] [--peer <user>]")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if peer != "" && !envelope.ValidHandle(peer) {
+			return fail(ExitNotFound, invalidHandleFormat, peer)
 		}
-		rows := make([][]string, len(list))
-		for i, t := range list {
-			dir := "->"
-			if t.Direction == threads.DirectionIn {
-				dir = "<-"
+		store, err := a.OpenStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		_, _ = store.ExpireStale(cmd.Context(), a.Now())
+		list, err := store.List(cmd.Context(), threads.Filter{Open: open, Peer: peer})
+		if err != nil {
+			return err
+		}
+		if list == nil {
+			list = []threads.Thread{}
+		}
+		a.emit(c, map[string]any{"ok": true, "threads": list}, func(w io.Writer) {
+			if len(list) == 0 {
+				fmt.Fprintln(w, "no threads")
+				return
 			}
-			sess := t.LocalSessionID
-			if t.StagedKickoff != "" {
-				sess = "(inbox)"
-				if t.Snoozed(a.Now()) {
-					sess = "(snoozed)"
+			rows := make([][]string, len(list))
+			for i, t := range list {
+				dir := "->"
+				if t.Direction == threads.DirectionIn {
+					dir = "<-"
 				}
+				sess := t.LocalSessionID
+				if t.StagedKickoff != "" {
+					sess = "(inbox)"
+					if t.Snoozed(a.Now()) {
+						sess = "(snoozed)"
+					}
+				}
+				rows[i] = []string{t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}
 			}
-			rows[i] = []string{t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}
-		}
-		table(w, []string{"THREAD", "PEER", "STATE", "LAST", "SESSION", "PREVIEW"}, rows)
-	})
-	return nil
+			table(w, []string{"THREAD", "PEER", "STATE", "LAST", "SESSION", "PREVIEW"}, rows)
+		})
+		return nil
+	}
+	return cmd
 }
 
 type userRow struct {
@@ -325,43 +333,44 @@ type userRow struct {
 	Online bool `json:"online"`
 }
 
-func (a *App) users(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("users", flag.ContinueOnError)
-	c.bind(fs)
-	if _, err := a.parse(fs, args); err != nil {
-		return err
-	}
-	cfg, err := a.loadConfig(c)
-	if err != nil {
-		return err
-	}
-	b, err := a.NewBus(ctx, cfg)
-	if err != nil {
-		return fail(ExitUnavailable, "bus: %v", err)
-	}
-	defer b.Close()
-	list, err := b.Registry().List(ctx)
-	if err != nil {
-		return fail(ExitUnavailable, "registry: %v", err)
-	}
-	rows := make([]userRow, 0, len(list))
-	for _, p := range list {
-		rows = append(rows, userRow{Presence: p, Online: a.Now().Sub(p.LastSeen) < 2*cfg.Daemon.RegistryInterval})
-	}
-	a.emit(c, map[string]any{"ok": true, "users": rows}, func(w io.Writer) {
-		if len(rows) == 0 {
-			fmt.Fprintln(w, "no daemons have registered on this bus")
-			return
+// newUsersCommand lists registered handles and their presence.
+func (a *App) newUsersCommand(c *common) *cobra.Command {
+	cmd := command("users", "List handles registered on the bus")
+	cmd.Args = noArgs("wormhole users")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		cfg, err := a.loadConfig(c)
+		if err != nil {
+			return err
 		}
-		out := make([][]string, len(rows))
-		for i, r := range rows {
-			state := "offline"
-			if r.Online {
-				state = "online"
+		b, err := a.NewBus(cmd.Context(), cfg)
+		if err != nil {
+			return fail(ExitUnavailable, busErrorFormat, err)
+		}
+		defer b.Close()
+		list, err := b.Registry().List(cmd.Context())
+		if err != nil {
+			return fail(ExitUnavailable, "registry: %v", err)
+		}
+		rows := make([]userRow, 0, len(list))
+		for _, p := range list {
+			rows = append(rows, userRow{Presence: p, Online: a.Now().Sub(p.LastSeen) < 2*cfg.Daemon.RegistryInterval})
+		}
+		a.emit(c, map[string]any{"ok": true, "users": rows}, func(w io.Writer) {
+			if len(rows) == 0 {
+				fmt.Fprintln(w, "no daemons have registered on this bus")
+				return
 			}
-			out[i] = []string{"^" + r.Handle, r.Host, r.OS, r.Mode, state, ago(r.LastSeen, a.Now())}
-		}
-		table(w, []string{"HANDLE", "HOST", "OS", "MODE", "PRESENCE", "LAST SEEN"}, out)
-	})
-	return nil
+			out := make([][]string, len(rows))
+			for i, r := range rows {
+				state := "offline"
+				if r.Online {
+					state = "online"
+				}
+				out[i] = []string{"^" + r.Handle, r.Host, r.OS, r.Mode, state, ago(r.LastSeen, a.Now())}
+			}
+			table(w, []string{"HANDLE", "HOST", "OS", "MODE", "PRESENCE", "LAST SEEN"}, out)
+		})
+		return nil
+	}
+	return cmd
 }

@@ -48,7 +48,10 @@ If the question needs bob's personal judgment, summarize and wait for them.
 Every command takes `--json` and `--config <path>` and returns a stable
 exit code: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 bus or app
 unavailable. Flags may come before or after positionals. A body of `-` is
-read from stdin.
+read from stdin. `--no-input` forbids interactive prompts; it does not imply
+`--yes`, so a command that still needs confirmation refuses instead of sending
+or running anything. Help, tables, prompts, and errors use terminal styling
+only when appropriate; redirected output, `NO_COLOR`, and `--json` stay plain.
 
 | Command | What it does |
 | --- | --- |
@@ -66,6 +69,10 @@ read from stdin.
 | `wormhole login [--creds <file>]` | Install credentials with private file modes and verify them. |
 | `wormhole init` | Write a starter config. |
 | `wormhole admin init --url <nats url>` | Create the stream and registry bucket (admin only). |
+| `wormhole completion bash\|zsh\|fish` | Generate shell completion. Thread IDs complete from the local store; other dynamic completion fails silently rather than delaying the shell. |
+| `wormhole commands [path...] [--flags] [--json]` | Show the command tree or a subtree. JSON includes a `schemaVersion` for agent consumers. |
+| `wormhole version` / `wormhole --version` | Show version, commit, and build date. |
+| `wormhole update [--enable\|--disable]` | Check for and install an update now, or control opt-in daily automatic checks. See [Install and configure](install.md#updates). |
 
 ### Thread states
 

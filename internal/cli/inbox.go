@@ -3,11 +3,12 @@ package cli
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/yjmrobert/wormhole/internal/bus"
 	"github.com/yjmrobert/wormhole/internal/config"
@@ -20,11 +21,11 @@ import (
 // waiting on it.
 func (a *App) stagedThread(ctx context.Context, store *threads.Store, id string) (threads.Thread, error) {
 	if !envelope.ValidID(id) {
-		return threads.Thread{}, fail(ExitNotFound, "%q is not a thread id", id)
+		return threads.Thread{}, fail(ExitNotFound, invalidThreadIDFormat, id)
 	}
 	t, err := store.Get(ctx, id)
 	if err != nil {
-		return threads.Thread{}, fail(ExitNotFound, "thread %s is not on this machine", id)
+		return threads.Thread{}, fail(ExitNotFound, threadNotFoundFormat, id)
 	}
 	if t.StagedKickoff == "" {
 		return threads.Thread{}, fail(ExitRefused, "nothing is waiting on thread %s (state %s)", id, t.State)
@@ -47,54 +48,49 @@ type snoozeResult struct {
 	SnoozedUntil string `json:"snoozed_until,omitempty"`
 }
 
-// snooze hides a staged message from the inbox for a while. The daemon
-// notifies once more when the time passes. It is local and reversible, so
-// there is no confirmation.
-func (a *App) snooze(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("snooze", flag.ContinueOnError)
-	c.bind(fs)
-	pos, err := a.parse(fs, args)
-	if err != nil {
-		return err
-	}
-	if len(pos) < 1 || len(pos) > 2 {
-		return fail(ExitUsage, "usage: wormhole snooze <thread_id> [<duration>|off]")
-	}
-	cfg, err := a.loadConfig(c)
-	if err != nil {
-		return err
-	}
-	length := ""
-	if len(pos) == 2 {
-		length = pos[1]
-	}
-	d, err := parseSnooze(length, cfg.Daemon.SnoozeDefault)
-	if err != nil {
-		return err
-	}
-	store, err := a.OpenStore()
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	t, err := a.stagedThread(ctx, store, pos[0])
-	if err != nil {
-		return err
-	}
-	res, err := a.snoozeThread(ctx, store, t, d)
-	if err != nil {
-		return err
-	}
-	a.emit(c, res, func(w io.Writer) {
-		if res.SnoozedUntil == "" {
-			fmt.Fprintf(w, "thread %s is back in the inbox\n", t.ID)
-			return
+// snoozeThread hides a staged message for a while. It is local and reversible.
+func (a *App) newSnoozeCommand(c *common) *cobra.Command {
+	cmd := command("snooze <thread_id> [duration|off]", "Hide a staged message until later")
+	cmd.Args = rangeArgs(1, 2, "wormhole snooze <thread_id> [<duration>|off]")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := a.loadConfig(c)
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(w, "thread %s snoozed until %s; the daemon will remind you once\n", t.ID, res.SnoozedUntil)
-	})
-	return nil
+		length := ""
+		if len(args) == 2 {
+			length = args[1]
+		}
+		d, err := parseSnooze(length, cfg.Daemon.SnoozeDefault)
+		if err != nil {
+			return err
+		}
+		store, err := a.OpenStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		t, err := a.stagedThread(cmd.Context(), store, args[0])
+		if err != nil {
+			return err
+		}
+		res, err := a.snoozeThread(cmd.Context(), store, t, d)
+		if err != nil {
+			return err
+		}
+		a.emit(c, res, func(w io.Writer) {
+			if res.SnoozedUntil == "" {
+				fmt.Fprintf(w, "thread %s is back in the inbox\n", t.ID)
+				return
+			}
+			fmt.Fprintf(w, "thread %s snoozed until %s; the daemon will remind you once\n", t.ID, res.SnoozedUntil)
+		})
+		return nil
+	}
+	return cmd
 }
 
+// snoozeThread applies a snooze duration and formats its result.
 func (a *App) snoozeThread(ctx context.Context, store *threads.Store, t threads.Thread, d time.Duration) (snoozeResult, error) {
 	until, err := daemon.Snooze(ctx, store, t, a.Now(), d)
 	if err != nil {
@@ -105,7 +101,7 @@ func (a *App) snoozeThread(ctx context.Context, store *threads.Store, t threads.
 	}
 	res := snoozeResult{OK: true, ThreadID: t.ID}
 	if !until.IsZero() {
-		res.SnoozedUntil = until.UTC().Format("2006-01-02T15:04:05Z")
+		res.SnoozedUntil = until.UTC().Format(utcTimestampLayout)
 	}
 	return res, nil
 }
@@ -117,66 +113,66 @@ type declineResult struct {
 	Status   string `json:"status"`
 }
 
-// decline closes a staged message without running it and tells the asker.
-// It publishes to the bus, so it asks first unless --yes.
-func (a *App) decline(ctx context.Context, c *common, args []string) error {
-	fs := flag.NewFlagSet("decline", flag.ContinueOnError)
-	c.bind(fs)
-	yes := fs.Bool("yes", false, "skip the confirmation")
-	pos, err := a.parse(fs, args)
-	if err != nil {
-		return err
-	}
-	if len(pos) < 1 || len(pos) > 2 {
-		return fail(ExitUsage, "usage: wormhole decline <thread_id> [\"<reason>\"]")
-	}
-	cfg, err := a.loadConfig(c)
-	if err != nil {
-		return err
-	}
-	reason := ""
-	if len(pos) == 2 {
-		reason, err = a.readText(pos[1])
+// newDeclineCommand closes a staged message without running it and tells the asker.
+func (a *App) newDeclineCommand(c *common) *cobra.Command {
+	var yes bool
+	cmd := command("decline <thread_id> [reason]", "Decline a staged message and notify the sender")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation")
+	cmd.Args = rangeArgs(1, 2, `wormhole decline <thread_id> ["<reason>"]`)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := a.loadConfig(c)
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(reason) != "" {
-			if err := a.guardBody(reason, false); err != nil {
+		reason := ""
+		if len(args) == 2 {
+			reason, err = a.readText(args[1])
+			if err != nil {
 				return err
 			}
+			if strings.TrimSpace(reason) != "" {
+				if err := a.guardBody(reason, false); err != nil {
+					return err
+				}
+			}
 		}
-	}
-	store, err := a.OpenStore()
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	t, err := a.stagedThread(ctx, store, pos[0])
-	if err != nil {
-		return err
-	}
-	if !*yes {
-		if !a.IsTerminal() {
-			return fail(ExitRefused, "not a terminal: confirm with the person, then rerun with --yes")
-		}
-		ok, err := a.confirm(declinePrompt(t, reason))
+		store, err := a.OpenStore()
 		if err != nil {
 			return err
 		}
-		if !ok {
-			return fail(ExitRefused, "not declined; it stays in the inbox")
+		defer store.Close()
+		t, err := a.stagedThread(cmd.Context(), store, args[0])
+		if err != nil {
+			return err
 		}
+		if !yes {
+			if c.noInput {
+				return fail(ExitRefused, noInputReviewMessage)
+			}
+			if !a.IsTerminal() {
+				return fail(ExitRefused, "not a terminal: confirm with the person, then rerun with --yes")
+			}
+			ok, err := a.confirm(declinePrompt(t, reason))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fail(ExitRefused, notDeclinedMessage)
+			}
+		}
+		res, err := a.declineThread(cmd.Context(), cfg, store, t, reason)
+		if err != nil {
+			return err
+		}
+		a.emit(c, res, func(w io.Writer) {
+			fmt.Fprintf(w, "declined thread %s; ^%s will see: %s\n", res.ThreadID, res.Peer, res.Status)
+		})
+		return nil
 	}
-	res, err := a.declineThread(ctx, cfg, store, t, reason)
-	if err != nil {
-		return err
-	}
-	a.emit(c, res, func(w io.Writer) {
-		fmt.Fprintf(w, "declined thread %s; ^%s will see: %s\n", res.ThreadID, res.Peer, res.Status)
-	})
-	return nil
+	return cmd
 }
 
+// declinePrompt describes the receipt a sender will receive.
 func declinePrompt(t threads.Thread, reason string) string {
 	return fmt.Sprintf("Decline this message from ^%s? They will see: %s", t.Peer, envelope.DeclineStatus(reason))
 }
@@ -185,7 +181,7 @@ func declinePrompt(t threads.Thread, reason string) string {
 func (a *App) declineThread(ctx context.Context, cfg *config.Config, store *threads.Store, t threads.Thread, reason string) (declineResult, error) {
 	b, err := a.NewBus(ctx, cfg)
 	if err != nil {
-		return declineResult{}, fail(ExitUnavailable, "bus: %v", err)
+		return declineResult{}, fail(ExitUnavailable, busErrorFormat, err)
 	}
 	defer b.Close()
 	ack, err := daemon.Decline(ctx, b, store, a.me(cfg), t, reason, a.Now())
