@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yjmrobert/wormhole/internal/systemd"
 	"github.com/yjmrobert/wormhole/skills"
@@ -102,5 +103,36 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 	_ = json.Unmarshal(f.out.Bytes(), &res)
 	if res.Installed || !strings.Contains(res.Fallback, "wormhole daemon") {
 		t.Fatalf("fallback = %+v", res)
+	}
+}
+
+// TestDemo is the CI smoke test: the whole narrated round trip, fast.
+func TestDemo(t *testing.T) {
+	f := newCLIFixture(t)
+	start := time.Now()
+	if code := f.run("demo", "--fast", "--json"); code != ExitOK {
+		t.Fatalf("demo: %d %s %s", code, f.out.String(), f.errOut.String())
+	}
+	var res struct {
+		OK    bool       `json:"ok"`
+		Steps []demoStep `json:"steps"`
+	}
+	if err := json.Unmarshal(f.out.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || len(res.Steps) < 10 {
+		t.Fatalf("steps = %+v", res.Steps)
+	}
+	for _, s := range res.Steps {
+		if !s.OK {
+			t.Errorf("step %s failed: %s", s.Name, s.Detail)
+		}
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Fatalf("demo took %s", time.Since(start))
+	}
+	f.out.Reset()
+	if code := f.run("demo", "--fast"); code != ExitOK || !strings.Contains(f.out.String(), "wormhole reply") || !strings.Contains(f.out.String(), "declined: taking it to standup") {
+		t.Fatalf("narrated demo: %d\n%s\n%s", code, f.out.String(), f.errOut.String())
 	}
 }

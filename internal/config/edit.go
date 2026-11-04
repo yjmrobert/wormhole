@@ -159,6 +159,41 @@ func SetList(doc *yaml.Node, dotted string, values []string) {
 	}
 }
 
+// Unset removes the key at a dotted path, if present.
+func Unset(doc *yaml.Node, dotted string) {
+	m := root(doc)
+	parts := strings.Split(dotted, ".")
+	for _, p := range parts[:len(parts)-1] {
+		v, ok := lookup(m, p)
+		if !ok {
+			return
+		}
+		m = v
+	}
+	key := parts[len(parts)-1]
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
+			return
+		}
+	}
+}
+
+// Has reports whether a key exists at a dotted path.
+func Has(doc *yaml.Node, dotted string) bool {
+	m := root(doc)
+	parts := strings.Split(dotted, ".")
+	for _, p := range parts[:len(parts)-1] {
+		v, ok := lookup(m, p)
+		if !ok {
+			return false
+		}
+		m = v
+	}
+	_, ok := lookup(m, parts[len(parts)-1])
+	return ok
+}
+
 // Get reads a scalar at a dotted path.
 func Get(doc *yaml.Node, dotted string) (string, bool) {
 	m := root(doc)

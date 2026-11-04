@@ -97,6 +97,16 @@ func (a *App) installDaemonService(ctx context.Context, c *common, w io.Writer) 
 	return out, nil
 }
 
+// serviceStatus asks systemd about the daemon unit.
+func (a *App) serviceStatus(ctx context.Context) systemd.Status {
+	return systemd.Query(ctx, a.systemctl(), daemonUnit)
+}
+
+// restartService restarts a unit so it picks up a new credential.
+func (a *App) restartService(ctx context.Context, name string) error {
+	return systemd.Restart(ctx, a.systemctl(), name)
+}
+
 // newServiceCommand manages the daemon's user service.
 func (a *App) newServiceCommand(c *common) *cobra.Command {
 	cmd := command("service", "Run the daemon as a systemd user service")

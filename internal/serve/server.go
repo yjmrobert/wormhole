@@ -466,8 +466,16 @@ func Redeem(ctx context.Context, inv Invite, caFile, host string, timeout time.D
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
+	// A credential the server rejects usually means a spent invite, but
+	// for a moment after `serve invite` the running server has not loaded
+	// the join user yet: keep trying for a few seconds before saying so.
+	authGrace := authRetryGrace
+	if authGrace > timeout {
+		authGrace = timeout
+	}
 	deadline := time.Now().Add(timeout)
 	var lastErr error
+	var authSince time.Time
 	for attempt := 0; ; attempt++ {
 		if attempt > 0 {
 			select {
@@ -481,11 +489,23 @@ func Redeem(ctx context.Context, inv Invite, caFile, host string, timeout time.D
 			return r, nil
 		}
 		lastErr = err
+		if errors.Is(err, natsgo.ErrAuthorization) {
+			if authSince.IsZero() {
+				authSince = time.Now()
+			}
+			if time.Since(authSince) >= authGrace {
+				return Redeemed{}, fmt.Errorf("%w: the bus does not know this invite any more (used, revoked or expired); ask for a new one: wormhole serve invite %s", ErrRefused, inv.Handle)
+			}
+		}
 		if !retry || time.Now().After(deadline) {
 			return Redeemed{}, lastErr
 		}
 	}
 }
+
+// authRetryGrace is how long a rejected join credential is retried before
+// the invite is reported as spent.
+const authRetryGrace = 5 * time.Second
 
 // Redeemed is what a successful exchange yields.
 type Redeemed struct {

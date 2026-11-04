@@ -206,6 +206,16 @@ func parseKey(p []byte) (*ecdsa.PrivateKey, error) {
 	return x509.ParseECPrivateKey(block.Bytes)
 }
 
+// FingerprintPEM is the SHA-256 of a PEM certificate, hex encoded.
+func FingerprintPEM(p []byte) string {
+	cert, err := parseCert(p)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:])
+}
+
 // CAPEM encodes a DER certificate as PEM, the form config files point at.
 func CAPEM(der []byte) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
