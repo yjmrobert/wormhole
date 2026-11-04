@@ -23,6 +23,7 @@ import (
 	natsbus "github.com/yjmrobert/wormhole/internal/bus/nats"
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/ghapp"
+	"github.com/yjmrobert/wormhole/internal/systemd"
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
@@ -70,6 +71,13 @@ type App struct {
 	Version    string
 	Commit     string
 	BuildDate  string
+
+	// LookPath finds agent binaries for `wormhole skill`; nil means
+	// exec.LookPath.
+	LookPath func(string) (string, error)
+	// Systemctl runs systemctl for `wormhole service`; nil means the real
+	// one.
+	Systemctl systemd.Runner
 }
 
 // Default returns an App wired to the real environment.
@@ -231,6 +239,9 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 		a.newVersionCommand(c),
 		a.newUpdateCommand(c),
 		a.newManCommand(),
+		a.newSkillCommand(c),
+		a.newServiceCommand(c),
+		a.newDemoCommand(c),
 	)
 	a.registerCompletions(root, c)
 	return root, c
