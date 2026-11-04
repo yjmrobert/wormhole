@@ -118,10 +118,10 @@ for each question (`--handle`, `--invite`, `--url`, `--password-file`,
 `wormhole doctor` then names what is still missing, with the command that
 fixes it.
 
-`wormhole doctor` checks the config, credentials, the bus, the stream and
-registry, the Copilot binary, the display environment, the inbox page and
-dead letters. Every failing check ends with its fix, and `--json` carries
-it in a `fix` field.
+`wormhole doctor` checks the config, credentials, who may ask you, the
+bus, the stream and registry, the Copilot binary and its skill, the daemon
+service, the display environment, the inbox page and dead letters. Every
+failing check ends with its fix, and `--json` carries it in a `fix` field.
 
 ## Operating your own bus
 

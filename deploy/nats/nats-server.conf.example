@@ -1,6 +1,11 @@
 # Wormhole bus: one nats-server with JetStream on a VM every user can reach.
 # Copy to nats-server.conf (private, never committed) and edit.
 #
+# This is the path for teams that run the bus themselves. `wormhole serve`
+# embeds the same server with generated TLS material and users, and grants
+# every user the permissions accounts.conf.example documents; a daemon
+# cannot tell the two apart.
+#
 # Run:   nats-server -c /etc/nats/nats-server.conf
 # Then:  wormhole admin init --url tls://bus.example.internal:4222 --user admin
 #        (creates the WORMHOLE stream and the WORMHOLE_USERS bucket)
