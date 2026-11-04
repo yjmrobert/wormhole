@@ -37,7 +37,7 @@ Documentation lives as Markdown under `docs/` and is the source of truth; the si
 
 ## Brand Commitments
 
-Name: Wormhole. The maintainer pinned the visual world for the docs in October 2026: synthwave, a 1984 night in cyan, magenta and violet on deep navy, with physics pictures of the wormhole (a floor bent into a well under a striped wormhole on the horizon). Dark is the native theme; a light theme stays available. Ambient motion is welcome on the home page as long as it stays cheap: nothing computed at runtime, one or two transform animations, the reading column calm. The wordmark is a neon sign (Monoton) over a drawn mark.
+Name: Wormhole. The maintainer pinned the visual world for the docs in October 2026: synthwave, a 1984 night in cyan, magenta and violet on deep navy, with physics pictures of the wormhole. In November 2026 the maintainer asked for the wormhole itself: a WebGL tunnel running behind every page, with the site's components as frosted glass panes over it, transparent enough to watch it through and frosted enough to read on. Dark is the native theme; a light theme stays available (the wormhole printed pale on paper). The one runtime computation is that shader; it must stay cheap (sub-device resolution, paused when hidden, a still frame under reduced motion) and the reading column stays calm. The wordmark is a neon sign (Monoton) over a drawn mark.
 
 ## Evidence on Hand
 

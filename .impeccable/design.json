@@ -3,26 +3,109 @@
   "source": "tools/docsite/assets/style.css",
   "themes": {
     "dark": {
-      "navy": "oklch(11% 0.045 285)", "navy-2": "oklch(15% 0.05 288)", "navy-3": "oklch(19.5% 0.055 290)",
-      "ink": "oklch(96% 0.01 300)", "ink-2": "oklch(78% 0.03 300)", "ink-3": "oklch(64% 0.04 300)",
-      "line": "oklch(96% 0.01 300 / 0.14)", "cyan": "oklch(86% 0.14 200)", "cyan-text": "oklch(86% 0.14 200)",
-      "magenta": "oklch(68% 0.27 340)", "magenta-text": "oklch(77% 0.22 345)", "violet": "oklch(56% 0.25 300)", "pink": "oklch(78% 0.2 350)", "star": "oklch(96% 0.01 300)"
+      "navy": "oklch(11% 0.045 285)",
+      "navy-2": "oklch(15% 0.05 288)",
+      "navy-3": "oklch(19.5% 0.055 290)",
+      "ink": "oklch(96% 0.01 300)",
+      "ink-2": "oklch(78% 0.03 300)",
+      "ink-3": "oklch(64% 0.04 300)",
+      "line": "oklch(96% 0.01 300 / 0.14)",
+      "cyan": "oklch(86% 0.14 200)",
+      "cyan-text": "oklch(86% 0.14 200)",
+      "magenta": "oklch(68% 0.27 340)",
+      "magenta-text": "oklch(77% 0.22 345)",
+      "violet": "oklch(56% 0.25 300)",
+      "pink": "oklch(78% 0.2 350)",
+      "star": "oklch(96% 0.01 300)",
+      "glass": "oklch(13% 0.05 287 / 0.6)",
+      "glass-2": "oklch(15% 0.05 288 / 0.74)",
+      "glass-3": "oklch(22% 0.06 290 / 0.6)",
+      "glass-edge": "oklch(96% 0.01 300 / 0.13)",
+      "glass-hi": "oklch(96% 0.01 300 / 0.09)"
     },
     "light": {
-      "navy": "oklch(97% 0.012 300)", "navy-2": "oklch(99% 0.005 300)", "navy-3": "oklch(93.5% 0.02 300)",
-      "ink": "oklch(18% 0.05 290)", "ink-2": "oklch(40% 0.05 290)", "ink-3": "oklch(50% 0.05 290)",
-      "line": "oklch(18% 0.05 290 / 0.16)", "cyan": "oklch(86% 0.14 200)", "cyan-text": "oklch(46% 0.12 210)",
-      "magenta": "oklch(68% 0.27 340)", "magenta-text": "oklch(50% 0.24 340)", "violet": "oklch(56% 0.25 300)", "pink": "oklch(78% 0.2 350)"
+      "navy": "oklch(97% 0.012 300)",
+      "navy-2": "oklch(99% 0.005 300)",
+      "navy-3": "oklch(93.5% 0.02 300)",
+      "ink": "oklch(18% 0.05 290)",
+      "ink-2": "oklch(40% 0.05 290)",
+      "ink-3": "oklch(50% 0.05 290)",
+      "line": "oklch(18% 0.05 290 / 0.16)",
+      "cyan": "oklch(86% 0.14 200)",
+      "cyan-text": "oklch(46% 0.12 210)",
+      "magenta": "oklch(68% 0.27 340)",
+      "magenta-text": "oklch(50% 0.24 340)",
+      "violet": "oklch(56% 0.25 300)",
+      "pink": "oklch(78% 0.2 350)",
+      "glass": "oklch(98.5% 0.006 300 / 0.74)",
+      "glass-2": "oklch(99.5% 0.004 300 / 0.82)",
+      "glass-3": "oklch(94% 0.02 300 / 0.7)",
+      "glass-edge": "oklch(18% 0.05 290 / 0.14)",
+      "glass-hi": "oklch(100% 0 0 / 0.9)"
     }
   },
   "type": {
-    "neon": {"family": "Monoton", "weight": 400, "transform": "uppercase", "tracking": "0.06em"},
-    "title": {"family": "Chakra Petch", "weight": 700, "transform": "uppercase", "tracking": "0.04em"},
-    "label": {"family": "Chakra Petch", "weight": 600, "transform": "uppercase", "tracking": "0.14em to 0.2em"},
-    "body": {"family": "Exo 2", "size": "17px", "lineHeight": 1.6, "measure": "68ch"},
-    "code": {"family": "JetBrains Mono", "sizeInline": "0.86em", "sizeBlock": "0.88rem"}
+    "neon": {
+      "family": "Monoton",
+      "weight": 400,
+      "transform": "uppercase",
+      "tracking": "0.06em"
+    },
+    "title": {
+      "family": "Chakra Petch",
+      "weight": 700,
+      "transform": "uppercase",
+      "tracking": "0.04em"
+    },
+    "label": {
+      "family": "Chakra Petch",
+      "weight": 600,
+      "transform": "uppercase",
+      "tracking": "0.14em to 0.2em"
+    },
+    "body": {
+      "family": "Exo 2",
+      "size": "17px",
+      "lineHeight": 1.6,
+      "measure": "68ch"
+    },
+    "code": {
+      "family": "JetBrains Mono",
+      "sizeInline": "0.86em",
+      "sizeBlock": "0.88rem"
+    }
   },
-  "space": {"base": "4px", "rail": "232px", "contents": "216px", "gutter": "clamp(16px, 4vw, 56px)", "heroHeight": "640px"},
-  "radius": {"control": "999px", "block": "8px", "figure": "14px"},
-  "motion": {"ease": "cubic-bezier(0.16, 1, 0.3, 1)", "feedback": "150ms", "figureLoop": "16s", "ringBreath": "7s", "orb": "11s", "starDrift": "140s to 260s"}
+  "space": {
+    "base": "4px",
+    "rail": "232px",
+    "contents": "216px",
+    "gutter": "clamp(16px, 4vw, 56px)",
+    "heroHeight": "min(640px, 76vh)",
+    "paneGap": "24px"
+  },
+  "radius": {
+    "control": "999px",
+    "block": "8px",
+    "figure": "14px",
+    "pane": "16px",
+    "column": "20px"
+  },
+  "motion": {
+    "ease": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "feedback": "150ms",
+    "figureLoop": "16s",
+    "starDrift": "140s to 260s",
+    "wormhole": {
+      "script": "tools/docsite/assets/wormhole.js",
+      "scale": "0.6 to 0.7 of device pixels, stepping down when a frame averages over 24ms",
+      "reducedMotion": "one still frame",
+      "noWebGL": "canvas removed, star field shown"
+    }
+  },
+  "glass": {
+    "blur": "18px",
+    "blurNarrow": "14px",
+    "saturate": 1.25,
+    "sheen": "linear-gradient(135deg, glass-sheen, transparent 38%)"
+  }
 }
