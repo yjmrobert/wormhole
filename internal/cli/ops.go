@@ -398,39 +398,6 @@ func (a *App) newLoginCommand(c *common) *cobra.Command {
 	return cmd
 }
 
-// newInitCommand writes a starter configuration outside Git worktrees.
-func (a *App) newInitCommand(c *common) *cobra.Command {
-	var force bool
-	cmd := command("init", "Write a starter configuration")
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing config")
-	cmd.Args = noArgs("wormhole init")
-	cmd.RunE = func(_ *cobra.Command, _ []string) error {
-		path := c.config
-		if path == "" {
-			path = config.DefaultPath()
-		}
-		if _, err := os.Stat(path); err == nil && !force {
-			return fail(ExitRefused, "%s exists; pass --force to overwrite", path)
-		}
-		if d, ok := config.InGitTree(path); ok {
-			return fail(ExitRefused, "%s is inside the git working tree %s; config must live outside any repository", path, d)
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return err
-		}
-		// Point the example's credential paths at the directory actually in use.
-		example := strings.ReplaceAll(config.Example, "~/.config/wormhole", filepath.Dir(path))
-		if err := os.WriteFile(path, []byte(example), 0o600); err != nil {
-			return err
-		}
-		a.emit(c, map[string]any{"ok": true, "path": path}, func(w io.Writer) {
-			fmt.Fprintf(w, "wrote %s (mode 600)\nedit handle, bus.url and senders, then run: wormhole login && wormhole doctor\n", path)
-		})
-		return nil
-	}
-	return cmd
-}
-
 // newAdminCommand constructs NATS administration commands.
 func (a *App) newAdminCommand(c *common) *cobra.Command {
 	admin := command("admin", "Administer the NATS bus")
