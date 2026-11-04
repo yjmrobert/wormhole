@@ -47,29 +47,53 @@ If the question needs bob's personal judgment, summarize and wait for them.
 
 Every command takes `--json` and `--config <path>` and returns a stable
 exit code: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 bus or app
-unavailable. Flags may come before or after positionals. A body of `-` is
-read from stdin. `--no-input` forbids interactive prompts; it does not imply
-`--yes`, so a command that still needs confirmation refuses instead of sending
-or running anything. Help, tables, prompts, and errors use terminal styling
-only when appropriate; redirected output, `NO_COLOR`, and `--json` stay plain.
+unavailable. Every error with code 3, 4 or 5 ends with the command or
+config line that fixes it. Flags may come before or after positionals. A
+body of `-` is read from stdin. `--no-input` forbids interactive prompts;
+it does not imply `--yes`, so a command that still needs confirmation
+refuses instead of sending or running anything. Help, tables, prompts, and
+errors use terminal styling only when appropriate; redirected output,
+`NO_COLOR`, and `--json` stay plain.
+
+### Thread references
+
+Wherever a command takes a `<thread>`, three forms work:
+
+| Form | Meaning |
+| --- | --- |
+| `01JB...` (26 characters) | the thread id |
+| `01JB`, `01JBX7` | a prefix of one; it must match exactly one local thread, or the error lists the candidates (exit 2) |
+| `^bob`, `^bob/2` | the newest open thread with bob, or the second newest |
+
+`wormhole inbox` and `wormhole threads` print the reference beside the
+full id, and `--json` carries it as `ref` (and the shortest unique prefix
+as `short`). Shell completion offers handles, references and ids.
 
 | Command | What it does |
 | --- | --- |
 | `wormhole ask <user> "<prompt>" [--repo o/r] [--context "PR #1"] [--session <id>] [--yes]` | Open a thread. Shows the envelope and asks for confirmation unless `--yes`. `--session` names the asking session when the shell does not. |
-| `wormhole reply <thread_id> "<text>" [--yes]` | Answer on a thread, from inside a relayed session. |
-| `wormhole send <user> --thread <id> "<text>" [--yes]` | Free-form follow-up on an open thread. |
+| `wormhole reply <thread> "<text>" [--yes]` | Answer on a thread, from inside a relayed session. |
+| `wormhole send <user> --thread <thread> "<text>" [--yes]` | Free-form follow-up on an open thread. |
 | `wormhole inbox [--watch\|--ui] [--all]` | Staged inbound asks and replies waiting for you; `--json` includes each message's full text. Snoozed ones are hidden unless `--all`. `--watch` keeps the inbox open in the terminal with the selected message's full text and one key per verb. `--ui` opens the inbox page the daemon serves (`daemon.inbox_ui`). |
-| `wormhole open <thread_id> [--agent] [--yes] [--no-start]` | Run a staged message with your normal tools: shows it and asks first (off a terminal, `--yes` is required), appends it to the session the thread belongs to or starts a new one, then shows it in the app. Prints `copilot --resume=<id>` as a fallback. `--agent` runs it headless under `copilot.safe_tools` and `extra_args` instead, as auto mode would. `--no-start` only prints the message. |
-| `wormhole snooze <thread_id> [<duration>\|off]` | Hide a staged message from the inbox for a while (`2h`, `45m`, `1d`; default `daemon.snooze_default`). The daemon notifies once more when it comes due. `off` brings it back. |
-| `wormhole decline <thread_id> ["<reason>"] [--yes]` | Pass on a staged message without running it. The asker's thread shows `declined` with your reason. Asks first unless `--yes`. |
+| `wormhole open <thread> [--agent] [--yes] [--no-start]` | Run a staged message with your normal tools: shows it and asks first (off a terminal, `--yes` is required), appends it to the session the thread belongs to or starts a new one, then shows it in the app. Prints `copilot --resume=<id>` as a fallback. `--agent` runs it headless under `copilot.safe_tools` and `extra_args` instead, as auto mode would. `--no-start` only prints the message. |
+| `wormhole snooze <thread> [<duration>\|off]` | Hide a staged message from the inbox for a while (`2h`, `45m`, `1d`; default `daemon.snooze_default`). The daemon notifies once more when it comes due. `off` brings it back. |
+| `wormhole decline <thread> ["<reason>"] [--yes]` | Pass on a staged message without running it. The asker's thread shows `declined` with your reason. Asks first unless `--yes`. |
 | `wormhole threads [--open] [--peer <user>]` | Local thread map: thread, peer, state, session, last message. |
 | `wormhole users` | Handles on the bus with host, mode and presence. |
+| `wormhole senders [add\|remove <handle> [--auto]]` | Who may ask you. `add` puts a handle under `senders:` in inbox mode (`--auto` for auto mode, refused while `copilot.safe_tools` is empty); `remove` takes it out. Comments in the file survive. |
 | `wormhole daemon [--once] [--pause\|--resume]` | Run the subscriber. `--pause` is the local kill switch. |
-| `wormhole doctor [--deep-link]` | Config, bus, stream, registry, copilot, display, dead letters. |
+| `wormhole service install\|status\|uninstall` | The daemon as a systemd user service, with the display environment imported. `join` runs `install`. |
+| `wormhole doctor [--deep-link]` | Config, credentials, bus, stream, registry, senders, copilot, display, dead letters. Each failure ends with its fix; `--json` has a `fix` field per check. |
+| `wormhole serve [--listen <addr>] [--advertise <host>] [--invite <handle>...]` | Host the bus: an embedded NATS server with TLS, in the foreground. `serve install` runs it as a user service and joins this machine. See [Install](install.md#2-host-the-bus-on-one-machine). |
+| `wormhole serve invite <handle> [--ttl 24h]` | Mint a one-time invite and print the `wormhole join` line to send. |
+| `wormhole serve users` / `wormhole serve revoke <handle>` | List users and pending invites; remove a user (the running server reloads). |
+| `wormhole join <invite>` | Join a bus: config, credential, skill, daemon service, and the next thing to do. Run again with a new invite to rotate the credential. |
+| `wormhole demo [--fast]` | alice and bob on this machine over the in-memory bus: ask, inbox, open, reply, snooze, decline, narrated. No server, no agent, no second person. |
+| `wormhole skill install [--agent <name>] [--dir <path>]` / `wormhole skill status` | Install the skill into every detected agent, or report where it is. |
+| `wormhole init [--no-input] [--handle ...] [--invite ...] [--url ...] [--senders a,b] [--notify ...]` | The config wizard: handle, how to reach the bus (an invite, or a URL and a credential), who may ask you, notifications. `--no-input` takes a flag per question. |
 | `wormhole login [--creds <file>]` | Install credentials with private file modes and verify them. |
-| `wormhole init` | Write a starter config. |
-| `wormhole admin init --url <nats url>` | Create the stream and registry bucket (admin only). |
-| `wormhole completion bash\|zsh\|fish` | Generate shell completion. Thread IDs complete from the local store; other dynamic completion fails silently rather than delaying the shell. |
+| `wormhole admin init --url <nats url>` | Create the stream and registry bucket on a bus you run yourself (admin only). |
+| `wormhole completion bash\|zsh\|fish` | Generate shell completion. Thread references and ids complete from the local store, handles from the registry (or the thread map when the bus is down); dynamic completion fails silently rather than delaying the shell. |
 | `wormhole commands [path...] [--flags] [--json]` | Show the command tree or a subtree. JSON includes a `schemaVersion` for agent consumers. |
 | `wormhole version` / `wormhole --version` | Show version, commit, and build date. |
 | `wormhole update [--enable\|--disable]` | Check for and install an update now, or control opt-in daily automatic checks. See [Install and configure](install.md#updates). |
@@ -167,5 +191,6 @@ the notification, the page or the tray is the bell.
 
 - Local: `wormhole daemon --pause` (messages wait on the bus) or
   `systemctl --user stop wormhole`.
-- Server: remove the user from `accounts.conf` and reload; purge their
+- Server: `wormhole serve revoke <handle>` on the machine running the
+  bus (or remove the user from `accounts.conf` and reload); purge their
   subjects with `nats stream purge WORMHOLE --subject 'wh.inbox.<user>.>'`.

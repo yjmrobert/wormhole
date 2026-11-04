@@ -1,12 +1,134 @@
 # Install and configure
 
-Three parts: a bus that every machine can reach, a daemon per machine, and
-the skill in each user's Copilot setup.
+Three parts: a bus every machine can reach, a daemon per machine, and the
+skill in each person's agent. The binary sets all three up; nothing below
+is edited by hand.
 
-## 1. The bus
+## 1. Get the binary
 
-One `nats-server` with JetStream on a VM on the same LAN as the users.
-Native systemd is preferred; Docker with host networking also works.
+Download a release tarball or build from source, on every machine:
+
+```sh
+# release
+curl -fsSLO https://github.com/yjmrobert/wormhole/releases/latest/download/checksums.txt
+# pick the asset for your arch from the release page, verify, install:
+sha256sum -c --ignore-missing checksums.txt
+install -m 0755 wormhole ~/.local/bin/wormhole
+
+# or from source
+go install github.com/yjmrobert/wormhole/cmd/wormhole@latest
+```
+
+`wormhole demo` runs alice and bob on this machine with no server and no
+second person, so you can see the round trip before setting anything up.
+
+## 2. Host the bus on one machine
+
+One person runs the bus. `wormhole serve` embeds a NATS JetStream server
+in the binary: it generates its own TLS material and its own users, so
+there is no `nats-server` to install and no config to copy.
+
+```sh
+wormhole serve install --invite bob
+```
+
+This writes a systemd user unit (`wormhole-serve`), starts it, joins this
+machine to its own bus under your handle (`$USER` unless `--handle` says
+otherwise), and prints one invite per `--invite` handle in the exact form
+to send:
+
+```
+on bob's machine run: wormhole join wh1.eyJ2IjoxLCJpZCI6Ij...
+```
+
+More invites later: `wormhole serve invite carol`. Who is on the bus:
+`wormhole serve users`. Remove someone: `wormhole serve revoke carol`.
+Without systemd, `wormhole serve` runs the server in the foreground.
+
+The server listens on every interface, port 4222, with TLS; `--listen`
+changes that and `--advertise host[:port]` names an address the others
+should use (a DNS name, a VPN address) when the ones it finds on its own
+interfaces are not reachable. The state lives under
+`~/.local/state/wormhole/serve`: the CA and server certificate, the user
+list with bcrypt-hashed passwords, and the JetStream store. Keep that
+directory private; it is mode 700.
+
+An invite is one token that fits in a chat message. It carries the bus
+addresses, the CA certificate, the handle, who sent it and a one-time
+secret that expires after 24 hours (`--ttl`). The secret is not a bus
+password: `join` exchanges it once for a credential the server generates,
+and the invite is dead afterwards. See [Design](design.md#joining-a-bus).
+
+## 3. Join the bus on every other machine
+
+```sh
+wormhole join wh1.eyJ2IjoxLCJpZCI6Ij...
+```
+
+`join` writes `~/.config/wormhole/config.yaml` (mode 600) with your
+handle, the bus addresses and the CA, stores the credential the server
+handed back next to it, verifies the connection, installs the skill into
+every agent it finds on this machine, installs and starts the daemon as a
+systemd user service, and ends with the one thing to do next:
+
+```
+joined tls://alice-laptop:4222 as ^bob
+ask them something: wormhole ask ^alice "..."
+```
+
+The person who invited you is added under `senders:` in inbox mode, so
+their first ask waits in your inbox instead of being rejected; nothing of
+theirs runs until you read it. `wormhole senders remove alice` undoes
+that; `wormhole senders add carol` lets someone else ask you.
+
+Running `join` again with a new invite rotates the credential and leaves
+the rest of the config alone.
+
+Without a systemd user session (an SSH login, a container), `join` says so
+and the fallback is to run `wormhole daemon` in a terminal.
+
+## 4. The skill and the service, by hand
+
+`join` already did both. The standalone forms, for a machine set up another
+way or after reinstalling an agent:
+
+```sh
+wormhole skill install            # into every detected agent; --agent copilot, or --dir <skills directory>
+wormhole skill status
+wormhole service install          # the daemon as a systemd user unit, with the display environment imported
+wormhole service status
+```
+
+The service unit ties the daemon to `graphical-session.target` and
+imports `DISPLAY`, `WAYLAND_DISPLAY` and `DBUS_SESSION_BUS_ADDRESS`, which
+`xdg-open`, `notify-send` and the Copilot CLI's keychain need. `wormhole
+doctor` says when they are missing.
+
+Copilot's user-level skills live in `~/.copilot/skills`; the skill is
+written to `wormhole/SKILL.md` there. Another agent, or a different
+layout, takes `--dir`.
+
+## 5. `wormhole init` for everything else
+
+`wormhole init` is a wizard: handle, how to reach the bus (paste an
+invite, or a URL plus a credential), who may ask you, notifications. Every
+answer has a default that works. `wormhole init --no-input` takes a flag
+for each question (`--handle`, `--invite`, `--url`, `--password-file`,
+`--creds`, `--senders a,b`, `--notify`) and skips what it cannot answer;
+`wormhole doctor` then names what is still missing, with the command that
+fixes it.
+
+`wormhole doctor` checks the config, credentials, the bus, the stream and
+registry, the Copilot binary, the display environment, the inbox page and
+dead letters. Every failing check ends with its fix, and `--json` carries
+it in a `fix` field.
+
+## Operating your own bus
+
+Teams that want the bus on a VM, under their own TLS certificate and
+account management, run `nats-server` themselves. `wormhole serve` and
+this path use the same stream, bucket, subjects and per-user permissions;
+a daemon cannot tell them apart.
 
 ```sh
 # on the VM, as root
@@ -21,7 +143,7 @@ Edit `/etc/nats/accounts.conf`: set real passwords (hash them with
 `nats server passwd`) and add one block per user with
 `deploy/nats/add-user.sh <handle>`. Edit `/etc/nats/nats-server.conf`:
 point `tls` at your certificate, or comment the block out on a trusted LAN
-during the spike. Then:
+during a spike. Then:
 
 ```sh
 systemctl enable --now nats
@@ -30,44 +152,21 @@ wormhole admin init --url tls://bus.example.internal:4222 --user admin
 
 `admin init` creates the `WORMHOLE` stream (7-day retention, 64 KB
 messages) and the `WORMHOLE_USERS` registry bucket. Keep the admin password
-off laptops; users never need it.
+off laptops; users never need it. Docker with host networking also works:
+`deploy/nats/docker-compose.yml`.
 
-Both config files are private. The repository ships only `*.example`
-copies, and CI refuses a commit that contains the real ones.
-
-## 2. The daemon
-
-Download a release tarball or build from source:
+Each machine then joins without an invite:
 
 ```sh
-# release
-curl -fsSLO https://github.com/yjmrobert/wormhole/releases/latest/download/checksums.txt
-# pick the asset for your arch from the release page, verify, install:
-sha256sum -c --ignore-missing checksums.txt
-install -m 0755 wormhole ~/.local/bin/wormhole
-
-# or from source
-go install github.com/yjmrobert/wormhole/cmd/wormhole@latest
-```
-
-Then on each machine:
-
-```sh
-wormhole init                             # ~/.config/wormhole/config.yaml, mode 600
-$EDITOR ~/.config/wormhole/config.yaml    # handle, bus.url, senders
-wormhole login                            # stores the bus password privately, verifies the connection
+wormhole init --no-input --handle alice --url tls://bus.example.internal:4222 --senders bob
+wormhole login                    # stores the bus password privately, verifies the connection
+wormhole skill install
+wormhole service install
 wormhole doctor
 ```
 
-Run the daemon under systemd so it survives logouts and gets the display
-environment it needs for `xdg-open` and `notify-send`:
-
-```sh
-mkdir -p ~/.config/systemd/user
-cp deploy/systemd/wormhole.service ~/.config/systemd/user/
-systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
-systemctl --user enable --now wormhole
-```
+Both server config files are private. The repository ships only `*.example`
+copies, and CI refuses a commit that contains the real ones.
 
 ### Updates
 
@@ -109,7 +208,7 @@ default `~/.local/state/wormhole`); any interactive command creates that
 directory and keeps it owner-only, whether or not checks are enabled. If the
 executable's directory is not writable, the command fails with a permission
 error and leaves the current binary untouched; reinstall it manually using
-the release steps in section 2. Restart the daemon after updating its binary:
+the release steps in section 1. Restart the daemon after updating its binary:
 
 ```sh
 systemctl --user restart wormhole
@@ -117,12 +216,16 @@ systemctl --user restart wormhole
 
 ### The config file
 
+`join` and `init` write it; `senders add` and `senders remove` edit it.
+Every key is documented in `deploy/config.yaml.example`.
+
 ```yaml
 handle: alice                       # must equal the bus user
 bus:
   kind: nats
-  url: tls://bus.example.internal:4222
+  url: tls://bus.example.internal:4222   # several addresses: comma-separated
   password_file: ~/.config/wormhole/password
+  tls_ca: ~/.config/wormhole/bus-ca.pem  # written by join; the CA of a wormhole serve bus
 senders:
   - bob                             # inbox mode: a person reads it first
   - {handle: carol, mode: auto}     # auto mode: runs headless with the tools below
@@ -150,10 +253,3 @@ Copilot CLI's permission flags in `extra_args`: allow the shell for
 `wormhole` and deny every subcommand but `reply`. The flag names depend on
 the CLI version; the profile that worked on 1.0.105 is in the design
 page's "M0 results".
-
-## 3. The skill
-
-Copy `skills/wormhole/SKILL.md` into your Copilot skills directory (or
-point your skills configuration at the file in the release tarball). It
-triggers on a `^handle` token and on sessions whose first message starts
-with `[wormhole]`. See [Using it](usage.md) for what it does.

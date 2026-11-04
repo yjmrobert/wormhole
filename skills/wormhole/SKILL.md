@@ -124,7 +124,16 @@ backstop, not the rule.
 ## Troubleshooting
 
 - `wormhole doctor --json` checks the bus, credentials, the Copilot binary,
-  the display environment and the dead-letter queue.
+  the display environment and the dead-letter queue. Every failing check
+  carries a `fix`: the command or config line that resolves it. Errors
+  with exit code 3, 4 or 5 end the same way; show the fix to the user.
+- A thread whose state is `rejected` with `rejected: sender not allowed`
+  means the recipient has not allowed this user yet; the fix is on their
+  machine: `wormhole senders add <this user>`. Tell the user; do not retry.
+- Thread arguments also accept `^bob` (the newest open thread with bob),
+  `^bob/2`, or a unique prefix of the id; `wormhole inbox --json` and
+  `wormhole threads --json` carry it as `ref`. Prefer the full `thread_id`
+  from JSON in commands you run yourself.
 - `wormhole open <thread_id>` shows the session for a thread in the app and
   prints `copilot --resume=<id>` as a fallback when the deep link fails.
 - Exit code 5 means the bus or the app is unreachable: report it, do not
