@@ -17,7 +17,11 @@ import (
 
 // inboxItem is one staged inbound message awaiting a person.
 type inboxItem struct {
-	ThreadID     string `json:"thread_id"`
+	ThreadID string `json:"thread_id"`
+	// Short is the shortest unique prefix of the id on this machine and
+	// Ref the ^peer or ^peer/n form; every command accepts either.
+	Short        string `json:"short"`
+	Ref          string `json:"ref,omitempty"`
 	Peer         string `json:"peer"`
 	Kind         string `json:"kind"` // ask or reply
 	Title        string `json:"title"`
@@ -91,9 +95,12 @@ func (a *App) newInboxCommand(c *common) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		short, refs := a.refsFor(cmd.Context(), store)
 		items := make([]inboxItem, 0, len(list))
 		for _, t := range list {
-			items = append(items, inboxItemOf(t))
+			it := inboxItemOf(t)
+			it.Short, it.Ref = short[t.ID], refs[t.ID]
+			items = append(items, it)
 		}
 		a.emit(c, map[string]any{"ok": true, "inbox": items}, func(w io.Writer) {
 			if len(items) == 0 {
@@ -106,11 +113,11 @@ func (a *App) newInboxCommand(c *common) *cobra.Command {
 				if it.SnoozedUntil != "" {
 					when = "snoozed until " + it.SnoozedUntil
 				}
-				rows[i] = []string{it.ThreadID, "^" + it.Peer, it.Kind, when, it.Preview}
+				rows[i] = []string{refOrShort(it.ThreadID, short, refs), it.ThreadID, "^" + it.Peer, it.Kind, when, it.Preview}
 			}
-			table(w, []string{"THREAD", "FROM", "KIND", "RECEIVED", "PREVIEW"}, rows)
-			fmt.Fprintln(w, "\nopen one with: wormhole open <thread>   hand it to your agent: wormhole open <thread> --agent")
-			fmt.Fprintln(w, "later: wormhole snooze <thread> [2h]      pass: wormhole decline <thread> [\"reason\"]      live view: wormhole inbox --watch")
+			table(w, []string{"REF", "THREAD", "FROM", "KIND", "RECEIVED", "PREVIEW"}, rows)
+			fmt.Fprintln(w, "\nopen one with: wormhole open ^<peer>   hand it to your agent: wormhole open ^<peer> --agent")
+			fmt.Fprintln(w, "later: wormhole snooze ^<peer> [2h]      pass: wormhole decline ^<peer> [\"reason\"]      live view: wormhole inbox --watch")
 		})
 		return nil
 	}
@@ -158,15 +165,12 @@ type openResult struct {
 // newOpenCommand runs or prints a staged message and shows its session.
 func (a *App) newOpenCommand(c *common) *cobra.Command {
 	var noStart, yes, agent bool
-	cmd := command("open <thread_id>", "Run a staged message and open its session")
+	cmd := command("open <thread>", "Run a staged message and open its session")
 	cmd.Flags().BoolVar(&noStart, "no-start", false, "do not run a staged message; just print it")
 	cmd.Flags().BoolVar(&yes, "yes", false, "run a staged message without showing it first")
 	cmd.Flags().BoolVar(&agent, "agent", false, "run the staged message headless with copilot.safe_tools and extra_args, as auto mode would, instead of with your normal tools")
-	cmd.Args = exactArgs(1, "wormhole open <thread_id>")
+	cmd.Args = exactArgs(1, "wormhole open <thread>")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		if !envelope.ValidID(args[0]) {
-			return fail(ExitNotFound, invalidThreadIDFormat, args[0])
-		}
 		cfg, err := a.loadConfig(c)
 		if err != nil {
 			return err
@@ -176,12 +180,12 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 			return err
 		}
 		defer store.Close()
-		t, err := store.Get(cmd.Context(), args[0])
+		t, err := a.resolveThread(cmd.Context(), store, args[0])
 		if err != nil {
-			return fail(ExitNotFound, threadNotFoundFormat, args[0])
+			return err
 		}
 		if t.StagedKickoff == "" && t.LocalSessionID == "" {
-			return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
+			return fail(ExitNotFound, "thread %s has no local session and nothing staged; see: wormhole threads", t.ID)
 		}
 		if t.StagedKickoff != "" {
 			if noStart {
@@ -301,7 +305,12 @@ func (a *App) newThreadsCommand(c *common) *cobra.Command {
 		if list == nil {
 			list = []threads.Thread{}
 		}
-		a.emit(c, map[string]any{"ok": true, "threads": list}, func(w io.Writer) {
+		short, refs := a.refsFor(cmd.Context(), store)
+		rows := make([]threadRow, len(list))
+		for i, t := range list {
+			rows[i] = threadRow{Thread: t, Short: short[t.ID], Ref: refs[t.ID]}
+		}
+		a.emit(c, map[string]any{"ok": true, "threads": rows}, func(w io.Writer) {
 			if len(list) == 0 {
 				fmt.Fprintln(w, "no threads")
 				return
@@ -319,13 +328,20 @@ func (a *App) newThreadsCommand(c *common) *cobra.Command {
 						sess = "(snoozed)"
 					}
 				}
-				rows[i] = []string{t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}
+				rows[i] = []string{refOrShort(t.ID, short, refs), t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}
 			}
-			table(w, []string{"THREAD", "PEER", "STATE", "LAST", "SESSION", "PREVIEW"}, rows)
+			table(w, []string{"REF", "THREAD", "PEER", "STATE", "LAST", "SESSION", "PREVIEW"}, rows)
 		})
 		return nil
 	}
 	return cmd
+}
+
+// threadRow is a thread with its short forms, for listings.
+type threadRow struct {
+	threads.Thread
+	Short string `json:"short"`
+	Ref   string `json:"ref,omitempty"`
 }
 
 type userRow struct {

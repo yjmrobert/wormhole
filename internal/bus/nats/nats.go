@@ -88,6 +88,8 @@ func Connect(ctx context.Context, o Options) (*Bus, error) {
 		natsgo.MaxReconnects(-1),
 		natsgo.ReconnectWait(2 * time.Second),
 		natsgo.Timeout(10 * time.Second),
+		// bus.url may list several addresses, the known-good one first.
+		natsgo.DontRandomize(),
 		natsgo.DisconnectErrHandler(func(_ *natsgo.Conn, err error) {
 			if err != nil {
 				o.Log.Warn("bus disconnected", logKeyError, err)

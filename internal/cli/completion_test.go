@@ -28,7 +28,7 @@ func TestThreadCompletionUsesLocalStore(t *testing.T) {
 	app := &App{OpenStore: func() (*threads.Store, error) { return threads.Open(path) }}
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
-	values, directive := app.completeThreadIDs(&common{}, true)(cmd, nil, "01AR")
+	values, directive := app.completeThreads(&common{}, true)(cmd, nil, "01AR")
 	if directive != cobra.ShellCompDirectiveNoFileComp || len(values) != 1 || !strings.HasPrefix(values[0], thread.ID+"\t") {
 		t.Fatalf("values %v directive %v", values, directive)
 	}

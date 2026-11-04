@@ -41,7 +41,7 @@ const (
 	utcTimestampLayout    = "2006-01-02T15:04:05Z"
 	invalidThreadIDFormat = "%q is not a thread id"
 	invalidHandleFormat   = "%q is not a valid handle"
-	threadNotFoundFormat  = "thread %s is not on this machine"
+	threadNotFoundFormat  = "thread %s is not on this machine; list yours with: wormhole threads"
 	busErrorFormat        = "bus: %v"
 	noInputReviewMessage  = "--no-input forbids confirmation prompts; review the message and rerun with --yes"
 	notStartedMessage     = "not started; it stays in the inbox"
@@ -231,6 +231,7 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 		a.newVersionCommand(c),
 		a.newUpdateCommand(c),
 		a.newManCommand(),
+		a.newSendersCommand(c),
 	)
 	a.registerCompletions(root, c)
 	return root, c

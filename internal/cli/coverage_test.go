@@ -385,15 +385,15 @@ func TestCompletionHandlesAndFailures(t *testing.T) {
 
 	storePath := filepath.Join(t.TempDir(), "threads.db")
 	f.app.OpenStore = func() (*threads.Store, error) { return nil, errors.New("locked") }
-	if values, _ := f.app.completeThreadIDs(&common{}, false)(cmd, nil, ""); values != nil {
+	if values, _ := f.app.completeThreads(&common{}, false)(cmd, nil, ""); values != nil {
 		t.Fatal("completed with failed store")
 	}
 	f.app.OpenStore = func() (*threads.Store, error) { return threads.Open(storePath) }
-	if values, _ := f.app.completeThreadIDs(&common{}, false)(cmd, []string{"used"}, ""); values != nil {
+	if values, _ := f.app.completeThreads(&common{}, false)(cmd, []string{"used"}, ""); values != nil {
 		t.Fatal("completed thread after positional argument")
 	}
 	f.app.OpenStore = nil
-	if values, _ := f.app.completeThreadIDs(&common{}, false)(cmd, nil, ""); values != nil {
+	if values, _ := f.app.completeThreads(&common{}, false)(cmd, nil, ""); values != nil {
 		t.Fatal("completed without store factory")
 	}
 }
