@@ -301,7 +301,7 @@ type registry struct{ b *Bus }
 func (r *registry) kv(ctx context.Context) (jetstream.KeyValue, error) {
 	kv, err := r.b.js.KeyValue(ctx, BucketName)
 	if err != nil {
-		return nil, fmt.Errorf("registry bucket %s: %w (run: wormhole admin init)", BucketName, err)
+		return nil, fmt.Errorf("registry bucket %s: %w (run: wormhole admin init, or restart wormhole serve)", BucketName, err)
 	}
 	return kv, nil
 }

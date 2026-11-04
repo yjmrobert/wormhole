@@ -234,7 +234,7 @@ func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
 	// Identity: the subject's sender token is what the server authenticated.
 	if e.From.User != dl.Sender {
 		log.Warn("dropping message whose from.user does not match the authenticated sender", "claimed", e.From.User)
-		d.reject(ctx, dl, "sender mismatch")
+		d.reject(ctx, dl, fmt.Sprintf("sender mismatch: from.user %q is not the bus user %q; set handle: %s in your config", e.From.User, dl.Sender, dl.Sender))
 		return
 	}
 	if e.To.User != d.cfg.Handle {
@@ -244,7 +244,7 @@ func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
 	}
 	if err := e.Validate(d.now()); err != nil {
 		log.Warn("invalid envelope", "err", err)
-		d.reject(ctx, dl, err.Error())
+		d.reject(ctx, dl, d.newAskFix(err.Error()))
 		return
 	}
 	// At-least-once: a message we already stored was fully handled by an
@@ -255,7 +255,7 @@ func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
 		return
 	}
 	if e.Hop > d.cfg.Limits.MaxHops {
-		d.reject(ctx, dl, fmt.Sprintf("hop %d exceeds max_hops %d", e.Hop, d.cfg.Limits.MaxHops))
+		d.reject(ctx, dl, d.newAskFix(fmt.Sprintf("hop %d exceeds max_hops %d", e.Hop, d.cfg.Limits.MaxHops)))
 		return
 	}
 
@@ -267,7 +267,7 @@ func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
 	case envelope.TypeReply, envelope.TypeMessage:
 		d.handleFollowUp(ctx, dl)
 	default:
-		d.reject(ctx, dl, "unknown type")
+		d.reject(ctx, dl, fmt.Sprintf("unknown type %q; update both ends with: wormhole update", e.Type))
 	}
 }
 
@@ -279,6 +279,9 @@ func (d *Daemon) ack(ctx context.Context, dl bus.Delivery) {
 
 // reject acks the bus message so it does not redeliver and tells the sender
 // why. A rejection is final: it is never retried.
+//
+// Every reason ends with what the asker, who reads it as "rejected:
+// <reason>", can do about it.
 func (d *Daemon) reject(ctx context.Context, dl bus.Delivery, reason string) {
 	d.log.Info("rejected", "msg", dl.Env.ID, "reason", reason)
 	if dl.Env.Type != envelope.TypeAck && envelope.ValidHandle(dl.Sender) {
@@ -291,6 +294,16 @@ func (d *Daemon) reject(ctx context.Context, dl bus.Delivery, reason string) {
 	d.ack(ctx, dl)
 }
 
+// notAllowed is the rejection for a sender missing from senders:.
+func (d *Daemon) notAllowed(sender string) string {
+	return fmt.Sprintf("sender not allowed; ask ^%s to run: wormhole senders add %s", d.cfg.Handle, sender)
+}
+
+// newAskFix ends a rejection whose remedy is a fresh thread.
+func (d *Daemon) newAskFix(reason string) string {
+	return fmt.Sprintf("%s; start a new ask: wormhole ask ^%s \"...\"", reason, d.cfg.Handle)
+}
+
 // retryOrDeadLetter is the failure path for steps before the ack: nak with
 // backoff, and after MaxDeliver attempts park the message and reject it.
 func (d *Daemon) retryOrDeadLetter(ctx context.Context, dl bus.Delivery, cause error) {
@@ -299,7 +312,7 @@ func (d *Daemon) retryOrDeadLetter(ctx context.Context, dl bus.Delivery, cause e
 		if err := d.bus.Publish(ctx, bus.DLQSubject(d.cfg.Handle), dl.Env); err != nil {
 			d.log.Warn("could not publish to dlq", "err", err)
 		}
-		d.reject(ctx, dl, fmt.Sprintf("delivery failed after %d attempts", dl.Attempt))
+		d.reject(ctx, dl, fmt.Sprintf("delivery failed after %d attempts; ask ^%s to run: wormhole doctor", dl.Attempt, d.cfg.Handle))
 		return
 	}
 	d.log.Warn("materialization failed, will retry", "msg", dl.Env.ID, "err", cause, "backoff", d.cfg.Daemon.NakBackoff)
@@ -374,7 +387,7 @@ func (d *Daemon) handleAsk(ctx context.Context, dl bus.Delivery) {
 	e := dl.Env
 	mode, allowed := d.cfg.SenderMode(dl.Sender)
 	if !allowed {
-		d.reject(ctx, dl, "sender not allowed")
+		d.reject(ctx, dl, d.notAllowed(dl.Sender))
 		return
 	}
 	if d.paused() {
@@ -411,7 +424,7 @@ func (d *Daemon) handleAsk(ctx context.Context, dl bus.Delivery) {
 	if existing, err := d.store.Get(ctx, e.ThreadID); err == nil {
 		// Thread id reuse: only the original peer may add to it.
 		if existing.Peer != dl.Sender || existing.Direction != threads.DirectionIn {
-			d.reject(ctx, dl, "thread id already in use")
+			d.reject(ctx, dl, d.newAskFix("thread id already in use"))
 			return
 		}
 		known = true
@@ -467,16 +480,16 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 	t, err := d.store.Get(ctx, e.ThreadID)
 	known := err == nil
 	if known && t.Peer != dl.Sender {
-		d.reject(ctx, dl, "not a party to this thread")
+		d.reject(ctx, dl, d.newAskFix("not a party to this thread"))
 		return
 	}
 	if known && t.State == threads.StateDeclined {
-		d.reject(ctx, dl, "thread declined")
+		d.reject(ctx, dl, d.newAskFix("thread declined"))
 		return
 	}
 	mode, allowed := d.cfg.SenderMode(dl.Sender)
 	if !known && !allowed {
-		d.reject(ctx, dl, "sender not allowed")
+		d.reject(ctx, dl, d.notAllowed(dl.Sender))
 		return
 	}
 	if !allowed {

@@ -38,7 +38,7 @@ type OpenResult struct {
 
 // Errors from OpenStaged and ParseSnooze. Callers compare with errors.Is.
 var (
-	ErrNoAgentProfile = errors.New("copilot.safe_tools is empty; running a message under the agent profile needs the auto-mode profile (see docs/design.md, M0 results)")
+	ErrNoAgentProfile = errors.New("copilot.safe_tools is empty; the agent profile needs it: set copilot.safe_tools in your config (see docs/design.md, M0 results), or open without --agent")
 	ErrNothingToOpen  = errors.New("no local session and nothing staged")
 	ErrStartSession   = errors.New("start session")
 	ErrBadDuration    = errors.New("not a duration (try 2h, 45m, 1d, or off)")

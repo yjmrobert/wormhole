@@ -365,7 +365,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("%w: sender %q is not a valid handle", ErrInvalid, s.Handle)
 		}
 		if s.Handle == c.Handle {
-			return fmt.Errorf("%w: %q cannot allowlist itself", ErrInvalid, s.Handle)
+			return fmt.Errorf("%w: %q is your own handle; you cannot allowlist yourself under senders:", ErrInvalid, s.Handle)
 		}
 		if seen[s.Handle] {
 			return fmt.Errorf("%w: sender %q listed twice", ErrInvalid, s.Handle)
@@ -375,7 +375,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("%w: sender %q mode %q (want inbox or auto)", ErrInvalid, s.Handle, s.Mode)
 		}
 		if s.Mode == ModeAuto && len(c.Copilot.SafeTools) == 0 {
-			return fmt.Errorf("%w: sender %q uses auto mode but copilot.safe_tools is empty; auto mode needs a read-only tool set", ErrInvalid, s.Handle)
+			return fmt.Errorf("%w: sender %q uses auto mode but copilot.safe_tools is empty; set copilot.safe_tools, or drop mode: auto from %s under senders:", ErrInvalid, s.Handle, s.Handle)
 		}
 	}
 	if c.Limits.PerSenderPerDay < 0 || c.Limits.PerDay < 0 || c.Limits.MaxHops < 1 {
