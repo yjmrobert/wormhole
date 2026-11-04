@@ -154,6 +154,7 @@ body { margin: 0; min-height: 100vh; position: relative; overflow-x: clip; backg
 /* ---------- masthead ---------- */
 .masthead { position: sticky; top: 0; z-index: 20; height: var(--masthead-h); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; padding: 0 var(--gutter);
   background: var(--glass); -webkit-backdrop-filter: blur(var(--blur)) saturate(1.25); backdrop-filter: blur(var(--blur)) saturate(1.25); border-bottom: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 var(--glass-hi); }
+.masthead::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; pointer-events: none; background: linear-gradient(90deg, var(--magenta), var(--cyan) 45%, transparent 92%); opacity: 0.8; }
 .wordmark { display: inline-flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; font-family: var(--font-title); font-weight: 700; font-size: 1.1rem; letter-spacing: 0.18em; text-transform: uppercase; }
 .wordmark .mark { width: 42px; height: 24px; fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 6px var(--cyan)); }
 .wordmark .mark circle:last-of-type { stroke: var(--magenta); filter: drop-shadow(0 0 6px var(--magenta)); }

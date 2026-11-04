@@ -12,8 +12,14 @@ A 1984 night, seen through glass. Behind every page a wormhole runs in
 WebGL (`assets/wormhole.js`): the camera falls down a bending tunnel whose
 walls are violet smoke threaded with cyan and magenta filaments, rings
 rush out past the viewer, warp streaks pass at the edges, and the throat
-is a lensed window onto the stars on the far side, ringed by a thin cyan
-horizon. The page itself is a set of frosted panes floating over it:
+is a lensed window onto the far side, ringed by a thin cyan event horizon.
+The synthwave night is in the shader too: a striped sun (violet to magenta
+to gold, the stripes widening toward its foot) sits on the horizon at the
+far end of the tunnel behind the smoke; below the horizon the floor is the
+wireframe grid, magenta lines running toward the reader and cyan lines
+across, scrolling toward the camera and sagging into the well under the
+throat; faint CRT scanlines sit over the dark theme. The page itself is a
+set of frosted panes floating over it:
 the masthead strip, the index rail, the reading column, the contents
 card. The wormhole shows through them softened and darkened; between
 them, and in the home page's hero window, it shows clear. The wordmark is
@@ -112,8 +118,9 @@ becomes a row of pills, the terminal cards hide, the hero shrinks; under
   contents card, away from the column. The pointer nudges it by a few
   percent. It renders at 0.6 to 0.7 of device pixels (the frost hides the
   difference) and steps down further if frames run long.
-- Masthead: a glass strip, wordmark (cyan and magenta mark plus WORMHOLE
-  in Chakra Petch), pill search, release tag chip, GitHub link, theme switch.
+- Masthead: a glass strip with a magenta-to-cyan hairline along its foot,
+  wordmark (cyan and magenta mark plus WORMHOLE in Chakra Petch), pill
+  search, release tag chip, GitHub link, theme switch.
 - Hero (home only): a clear window onto the throat, the neon title at 22%
   from the top, two glass terminal cards, and a glass kicker pill ("Ask
   across machines") with a cyan thread hanging from it. `hero()` in
@@ -139,8 +146,8 @@ tabular numerals in tables and the title block.
 Three movements, all ambient, all stoppable:
 
 1. The wormhole. The camera rolls slowly and falls down the tunnel; the
-   walls scroll, rings rush out, streaks pass, the throat pulses, the
-   stars behind it twinkle. It is the one thing computed at runtime, and
+   walls scroll, rings rush out, streaks pass, the grid floor runs toward
+   the reader, the throat pulses in front of the sun, the stars twinkle. It is the one thing computed at runtime, and
    it pays for itself: below device resolution, paused when the tab is
    hidden, stepping down resolution and noise octaves when a frame
    averages over 24 ms.
