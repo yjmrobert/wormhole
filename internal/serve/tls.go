@@ -199,4 +199,3 @@ func CACertDER(stateDir string) ([]byte, error) {
 
 // CAPEM converts the DER certificate an invite carries to PEM.
 func CAPEM(der []byte) []byte { return pemCert(der) }
-
