@@ -231,6 +231,8 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 		a.newVersionCommand(c),
 		a.newUpdateCommand(c),
 		a.newManCommand(),
+		a.newServeCommand(c),
+		a.newJoinCommand(c),
 	)
 	a.registerCompletions(root, c)
 	return root, c
