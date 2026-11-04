@@ -89,10 +89,10 @@ func (a *App) newUpdateCommand(c *common) *cobra.Command {
 			return fail(ExitUsage, "--enable and --disable are exclusive")
 		}
 		if a.NewUpdater == nil {
-			return fail(ExitUnavailable, "self-update is not configured")
+			return fail(ExitUnavailable, "self-update is not configured in this build; install a release from https://github.com/yjmrobert/wormhole/releases")
 		}
 		if enable && selfupdate.IsDevelopmentVersion(a.Version) {
-			return fail(ExitUnavailable, "automatic updates are unavailable for development build %q; use a tagged release", a.Version)
+			return fail(ExitUnavailable, "automatic updates are unavailable for development build %q; install a tagged release from https://github.com/yjmrobert/wormhole/releases", a.Version)
 		}
 		u, err := a.NewUpdater()
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,7 +18,11 @@ import (
 
 // inboxItem is one staged inbound message awaiting a person.
 type inboxItem struct {
-	ThreadID     string `json:"thread_id"`
+	ThreadID string `json:"thread_id"`
+	// Short is the shortest unique prefix of ThreadID; Ref is ^peer or
+	// ^peer/n. Every command that takes a <thread> accepts either.
+	Short        string `json:"short"`
+	Ref          string `json:"ref"`
 	Peer         string `json:"peer"`
 	Kind         string `json:"kind"` // ask or reply
 	Title        string `json:"title"`
@@ -31,12 +36,12 @@ type inboxItem struct {
 }
 
 // inboxItemOf converts a stored thread into the inbox output schema.
-func inboxItemOf(t threads.Thread) inboxItem {
+func inboxItemOf(t threads.Thread, l threadLabels) inboxItem {
 	kind := "ask"
 	if t.Direction == threads.DirectionOut {
 		kind = "reply"
 	}
-	it := inboxItem{ThreadID: t.ID, Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format(utcTimestampLayout), Repo: t.Repo, Text: t.StagedKickoff}
+	it := inboxItem{ThreadID: t.ID, Short: l.short[t.ID], Ref: l.refs[t.ID], Peer: t.Peer, Kind: kind, Title: t.Title, Preview: t.LastPreview, Received: t.LastMessageAt.UTC().Format(utcTimestampLayout), Repo: t.Repo, Text: t.StagedKickoff}
 	if !t.SnoozedUntil.IsZero() {
 		it.SnoozedUntil = t.SnoozedUntil.UTC().Format(utcTimestampLayout)
 	}
@@ -75,7 +80,7 @@ func (a *App) newInboxCommand(c *common) *cobra.Command {
 		}
 		if watch {
 			if c.noInput {
-				return fail(ExitRefused, "inbox --watch requires interactive input")
+				return fail(ExitRefused, "inbox --watch requires interactive input; drop --no-input, or list it with: wormhole inbox")
 			}
 			return a.watch(cmd.Context(), c)
 		}
@@ -91,9 +96,13 @@ func (a *App) newInboxCommand(c *common) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		labels, err := labelThreads(cmd.Context(), store)
+		if err != nil {
+			return err
+		}
 		items := make([]inboxItem, 0, len(list))
 		for _, t := range list {
-			items = append(items, inboxItemOf(t))
+			items = append(items, inboxItemOf(t, labels))
 		}
 		a.emit(c, map[string]any{"ok": true, "inbox": items}, func(w io.Writer) {
 			if len(items) == 0 {
@@ -106,10 +115,11 @@ func (a *App) newInboxCommand(c *common) *cobra.Command {
 				if it.SnoozedUntil != "" {
 					when = "snoozed until " + it.SnoozedUntil
 				}
-				rows[i] = []string{it.ThreadID, "^" + it.Peer, it.Kind, when, it.Preview}
+				rows[i] = []string{labels.column(it.ThreadID), it.ThreadID, "^" + it.Peer, it.Kind, when, it.Preview}
 			}
-			table(w, []string{"THREAD", "FROM", "KIND", "RECEIVED", "PREVIEW"}, rows)
-			fmt.Fprintln(w, "\nopen one with: wormhole open <thread>   hand it to your agent: wormhole open <thread> --agent")
+			table(w, []string{"REF", "THREAD", "FROM", "KIND", "RECEIVED", "PREVIEW"}, rows)
+			fmt.Fprintf(w, "\n<thread> is the REF (%s), a unique prefix, or the full id\n", labels.column(items[0].ThreadID))
+			fmt.Fprintln(w, "open one with: wormhole open <thread>   hand it to your agent: wormhole open <thread> --agent")
 			fmt.Fprintln(w, "later: wormhole snooze <thread> [2h]      pass: wormhole decline <thread> [\"reason\"]      live view: wormhole inbox --watch")
 		})
 		return nil
@@ -126,9 +136,9 @@ func (a *App) inboxUI(ctx context.Context, c *common) error {
 	url, err := inboxURL()
 	if err != nil {
 		if cfg.Daemon.InboxUI == "" {
-			return fail(ExitUnavailable, "the inbox page is off; set daemon.inbox_ui (127.0.0.1:7788) and restart the daemon")
+			return fail(ExitUnavailable, "the inbox page is off; set daemon.inbox_ui: 127.0.0.1:7788 in %s and restart the daemon", cfg.Path)
 		}
-		return fail(ExitUnavailable, "the inbox page is not running (no %s); start the daemon", config.InboxURLFile())
+		return fail(ExitUnavailable, "the inbox page is not running (no %s); start the daemon: wormhole daemon", config.InboxURLFile())
 	}
 	opened := false
 	var openErr string
@@ -158,14 +168,15 @@ type openResult struct {
 // newOpenCommand runs or prints a staged message and shows its session.
 func (a *App) newOpenCommand(c *common) *cobra.Command {
 	var noStart, yes, agent bool
-	cmd := command("open <thread_id>", "Run a staged message and open its session")
+	cmd := command("open <thread>", "Run a staged message and open its session")
+	cmd.Long = "Show a staged message, ask, then run it with your normal tools (or --agent for the auto-mode profile) and open its session in the app.\n" + threadArgHelp
 	cmd.Flags().BoolVar(&noStart, "no-start", false, "do not run a staged message; just print it")
 	cmd.Flags().BoolVar(&yes, "yes", false, "run a staged message without showing it first")
 	cmd.Flags().BoolVar(&agent, "agent", false, "run the staged message headless with copilot.safe_tools and extra_args, as auto mode would, instead of with your normal tools")
-	cmd.Args = exactArgs(1, "wormhole open <thread_id>")
+	cmd.Args = exactArgs(1, "wormhole open <thread>")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		if !envelope.ValidID(args[0]) {
-			return fail(ExitNotFound, invalidThreadIDFormat, args[0])
+		if _, err := parseThreadRef(args[0]); err != nil {
+			return err
 		}
 		cfg, err := a.loadConfig(c)
 		if err != nil {
@@ -176,12 +187,12 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 			return err
 		}
 		defer store.Close()
-		t, err := store.Get(cmd.Context(), args[0])
+		t, err := a.resolveThread(cmd.Context(), store, args[0])
 		if err != nil {
-			return fail(ExitNotFound, threadNotFoundFormat, args[0])
+			return err
 		}
 		if t.StagedKickoff == "" && t.LocalSessionID == "" {
-			return fail(ExitNotFound, "thread %s has no local session and nothing staged", t.ID)
+			return fail(ExitNotFound, "thread %s has no local session and nothing staged; see what is waiting: wormhole inbox", t.ID)
 		}
 		if t.StagedKickoff != "" {
 			if noStart {
@@ -201,7 +212,7 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 					return fail(ExitRefused, "--no-input forbids confirmation prompts; review the staged message and rerun with --yes")
 				}
 				if !a.IsTerminal() {
-					return fail(ExitRefused, "not a terminal: show the staged message to the person (wormhole open --no-start), then rerun with --yes")
+					return fail(ExitRefused, "not a terminal: show the staged message to the person (wormhole open %s --no-start), then rerun with --yes", args[0])
 				}
 				fmt.Fprintf(a.Stdout, "%s\n\n", t.StagedKickoff)
 				ok, err := a.confirm(openPrompt(t, agent))
@@ -267,13 +278,20 @@ func (a *App) openThread(ctx context.Context, c *common, cfg *config.Config, sto
 	case errors.Is(err, daemon.ErrNoAgentProfile):
 		return out, fail(ExitRefused, "%v", err)
 	case errors.Is(err, daemon.ErrNothingToOpen):
-		return out, fail(ExitNotFound, "%v", err)
+		return out, fail(ExitNotFound, "%v; see what is waiting: wormhole inbox", err)
 	case errors.Is(err, daemon.ErrStartSession):
-		return out, fail(ExitUnavailable, "%v", err)
+		return out, fail(ExitUnavailable, "%v; check copilot.binary in %s with: wormhole doctor", err, cfg.Path)
 	default:
 		return out, err
 	}
 	return out, nil
+}
+
+// threadRow is a thread as `wormhole threads --json` prints it.
+type threadRow struct {
+	threads.Thread
+	Short string `json:"short"`
+	Ref   string `json:"ref"`
 }
 
 // newThreadsCommand lists and filters locally stored threads.
@@ -283,10 +301,12 @@ func (a *App) newThreadsCommand(c *common) *cobra.Command {
 	cmd := command("threads", "List local threads")
 	cmd.Flags().BoolVar(&open, "open", false, "only threads that still expect traffic")
 	cmd.Flags().StringVar(&peer, "peer", "", "only threads with this handle")
+	cmd.Long = "List local threads. REF is ^peer or ^peer/n for open threads (the newest first) and the shortest unique id prefix otherwise; commands that take a <thread> accept either, or the full id."
 	cmd.Args = noArgs("wormhole threads [--open] [--peer <user>]")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		peer = strings.TrimPrefix(peer, "^")
 		if peer != "" && !envelope.ValidHandle(peer) {
-			return fail(ExitNotFound, invalidHandleFormat, peer)
+			return fail(ExitNotFound, invalidHandleFormat+"; list handles with: wormhole users", peer)
 		}
 		store, err := a.OpenStore()
 		if err != nil {
@@ -298,10 +318,15 @@ func (a *App) newThreadsCommand(c *common) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if list == nil {
-			list = []threads.Thread{}
+		labels, err := labelThreads(cmd.Context(), store)
+		if err != nil {
+			return err
 		}
-		a.emit(c, map[string]any{"ok": true, "threads": list}, func(w io.Writer) {
+		out := make([]threadRow, len(list))
+		for i, t := range list {
+			out[i] = threadRow{Thread: t, Short: labels.short[t.ID], Ref: labels.refs[t.ID]}
+		}
+		a.emit(c, map[string]any{"ok": true, "threads": out}, func(w io.Writer) {
 			if len(list) == 0 {
 				fmt.Fprintln(w, "no threads")
 				return
@@ -319,9 +344,9 @@ func (a *App) newThreadsCommand(c *common) *cobra.Command {
 						sess = "(snoozed)"
 					}
 				}
-				rows[i] = []string{t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}
+				rows[i] = []string{labels.column(t.ID), t.ID, dir + " ^" + t.Peer, string(t.State), ago(t.LastMessageAt, a.Now()), sess, t.LastPreview}
 			}
-			table(w, []string{"THREAD", "PEER", "STATE", "LAST", "SESSION", "PREVIEW"}, rows)
+			table(w, []string{"REF", "THREAD", "PEER", "STATE", "LAST", "SESSION", "PREVIEW"}, rows)
 		})
 		return nil
 	}
@@ -344,12 +369,12 @@ func (a *App) newUsersCommand(c *common) *cobra.Command {
 		}
 		b, err := a.NewBus(cmd.Context(), cfg)
 		if err != nil {
-			return fail(ExitUnavailable, busErrorFormat, err)
+			return fail(ExitUnavailable, busErrorFormat, err, cfg.Path)
 		}
 		defer b.Close()
 		list, err := b.Registry().List(cmd.Context())
 		if err != nil {
-			return fail(ExitUnavailable, "registry: %v", err)
+			return fail(ExitUnavailable, registryErrorFormat, err)
 		}
 		rows := make([]userRow, 0, len(list))
 		for _, p := range list {

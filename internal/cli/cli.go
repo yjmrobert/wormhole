@@ -39,10 +39,10 @@ const (
 const (
 	unknownMetadata       = "unknown"
 	utcTimestampLayout    = "2006-01-02T15:04:05Z"
-	invalidThreadIDFormat = "%q is not a thread id"
+	invalidThreadIDFormat = "%q is not a thread id, a prefix of one, or ^peer[/n]; list yours with: wormhole threads"
 	invalidHandleFormat   = "%q is not a valid handle"
-	threadNotFoundFormat  = "thread %s is not on this machine"
-	busErrorFormat        = "bus: %v"
+	threadNotFoundFormat  = "thread %s is not on this machine; list yours with: wormhole threads"
+	busErrorFormat        = "bus: %v; check bus.url in %s, then: wormhole login"
 	noInputReviewMessage  = "--no-input forbids confirmation prompts; review the message and rerun with --yes"
 	notStartedMessage     = "not started; it stays in the inbox"
 	notDeclinedMessage    = "not declined; it stays in the inbox"
@@ -144,7 +144,7 @@ func (a *App) loadConfig(c *common) (*config.Config, error) {
 	cfg, err := config.Load(path)
 	if err != nil {
 		if os.IsNotExist(errors.Unwrap(err)) || errors.Is(err, os.ErrNotExist) {
-			return nil, fail(ExitError, "no config at %s; run: wormhole init", path)
+			return nil, fail(ExitError, "no config at %s; run: wormhole init, or join a bus with: wormhole join <invite>", path)
 		}
 		return nil, wrap(ExitError, err)
 	}
