@@ -71,7 +71,7 @@ func (a *App) newDaemonCommand(c *common) *cobra.Command {
 		defer store.Close()
 		b, err := a.NewBus(ctx, cfg)
 		if err != nil {
-			return fail(ExitUnavailable, busErrorFormat, err)
+			return fail(ExitUnavailable, busErrorFormat, err, cfg.Path)
 		}
 		defer b.Close()
 		app := a.NewGHApp(cfg)
@@ -99,7 +99,7 @@ func (a *App) newDaemonCommand(c *common) *cobra.Command {
 			}
 			uiLn, err = inboxui.Listen(cfg.Daemon.InboxUI)
 			if err != nil {
-				return fail(ExitUnavailable, "inbox page: %v", err)
+				return fail(ExitUnavailable, "inbox page: %v; free the port or change daemon.inbox_ui in %s", err, cfg.Path)
 			}
 			defer uiLn.Close()
 			opts.InboxURL = ui.URL(uiLn)
@@ -126,7 +126,7 @@ func (a *App) newDaemonCommand(c *common) *cobra.Command {
 			}
 		}
 		if err := d.Run(ctx); err != nil {
-			return fail(ExitUnavailable, "%v", err)
+			return fail(ExitUnavailable, "%v (is the daemon's bus reachable? run: wormhole doctor)", err)
 		}
 		return nil
 	}
@@ -167,12 +167,13 @@ func (i *idleTimer) touch() { i.t.Reset(i.d) }
 // stop releases the idle timer.
 func (i *idleTimer) stop() { i.t.Stop() }
 
-// check is one doctor result.
+// check is one doctor result. Fix is the command or config line that
+// resolves a failing check.
 type check struct {
 	Name   string `json:"name"`
 	OK     bool   `json:"ok"`
 	Detail string `json:"detail,omitempty"`
-	Hint   string `json:"hint,omitempty"`
+	Fix    string `json:"fix,omitempty"`
 }
 
 // newDoctorCommand checks configuration, connectivity, and desktop integrations.
@@ -184,8 +185,8 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		ctx := cmd.Context()
 		var checks []check
-		add := func(name string, ok bool, detail, hint string) {
-			checks = append(checks, check{Name: name, OK: ok, Detail: detail, Hint: hint})
+		add := func(name string, ok bool, detail, fix string) {
+			checks = append(checks, check{Name: name, OK: ok, Detail: detail, Fix: fix})
 		}
 
 		path := c.config
@@ -194,64 +195,71 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 		}
 		cfg, err := config.Load(path)
 		if err != nil {
-			hint := "run: wormhole init"
-			if errors.Is(err, config.ErrWorldReadable) {
-				hint = "run: chmod 600 " + path
-			} else if errors.Is(err, config.ErrInGitTree) {
-				hint = "move the credentials file out of the repository"
-			}
-			add("config", false, err.Error(), hint)
+			add("config", false, err.Error(), configFix(path, err))
 			return a.doctorReport(c, checks)
 		}
 		add("config", true, path, "")
-		add("paused", !daemon.IsPaused(), config.PauseFile(), "wormhole daemon --resume")
+		add("paused", !daemon.IsPaused(), config.PauseFile(), "run: wormhole daemon --resume")
+		add(credentialsCheck(cfg))
+		add(sendersCheck(cfg))
 
 		store, err := a.OpenStore()
 		if err != nil {
-			add("threads db", false, err.Error(), "")
+			add("threads db", false, err.Error(), "check that "+config.StateDir()+" is writable, or set WORMHOLE_STATE_DIR")
 		} else {
 			defer store.Close()
+			labels, _ := labelThreads(ctx, store)
 			unopened, _ := store.List(ctx, threads.Filter{Direction: threads.DirectionIn, Unopened: true})
 			add("threads db", true, config.ThreadsDBPath(), "")
 			if len(unopened) > 0 {
-				add("unopened sessions", false, fmt.Sprintf("%d session(s) exist but never opened in the app", len(unopened)), "wormhole open <thread>")
+				add("unopened sessions", false, fmt.Sprintf("%d session(s) exist but never opened in the app", len(unopened)), "run: wormhole open "+labels.column(unopened[0].ID))
 			}
 			inbox, _ := store.List(ctx, threads.Filter{State: threads.StatePending})
-			add("inbox", true, fmt.Sprintf("%d pending", len(inbox)), "")
+			detail, fix := fmt.Sprintf("%d pending", len(inbox)), ""
+			if len(inbox) > 0 {
+				fix = "read it with: wormhole open " + labels.column(inbox[0].ID) + " --no-start, or: wormhole inbox"
+				detail += "; " + fix
+			}
+			add("inbox", true, detail, fix)
 		}
 
 		busCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
 		b, err := a.NewBus(busCtx, cfg)
 		if err != nil {
-			add("bus", false, err.Error(), "check bus.url and credentials; wormhole login")
+			add("bus", false, err.Error(), "check bus.url in "+cfg.Path+", then: wormhole login")
 		} else {
 			defer b.Close()
 			add("bus", true, "connected as "+b.User(), "")
 			if nb, ok := b.(*natsbus.Bus); ok {
 				st, err := nb.Status(busCtx)
 				if err != nil {
-					add("stream", false, err.Error(), "ask the bus admin to run: wormhole admin init")
+					add("stream", false, err.Error(), adminInitFix)
 				} else {
 					add("stream", true, fmt.Sprintf("%s, %d pending", st.ConnectedURL, st.Pending), "")
-					add("dead letters", st.DLQ == 0, fmt.Sprintf("%d on %s", st.DLQ, "wh.dlq."+cfg.Handle), "inspect with the nats CLI; they are messages the daemon gave up on")
+					dlq := "wh.dlq." + cfg.Handle
+					add("dead letters", st.DLQ == 0, fmt.Sprintf("%d on %s (messages the daemon gave up on)", st.DLQ, dlq), fmt.Sprintf("inspect with: nats stream get %s --last-for %s", natsbus.StreamName, dlq))
 				}
 			}
 			if list, err := b.Registry().List(busCtx); err != nil {
-				add("registry", false, err.Error(), "ask the bus admin to run: wormhole admin init")
+				add("registry", false, err.Error(), adminInitFix)
 			} else {
 				add("registry", true, fmt.Sprintf("%d handle(s)", len(list)), "")
 			}
 		}
 
 		if p, err := exec.LookPath(cfg.Copilot.Binary); err != nil {
-			add("copilot", false, cfg.Copilot.Binary+" not on PATH", "install the Copilot CLI or set copilot.binary")
+			add("copilot", false, cfg.Copilot.Binary+" not on PATH", "install the Copilot CLI, or set copilot.binary in "+cfg.Path)
 		} else {
 			add("copilot", true, p, "")
 		}
+		optional := map[string]string{
+			"xdg-open":    "optional; install xdg-utils to open the app, or set daemon.open_app: false",
+			"notify-send": "optional; install libnotify to see notifications, or set daemon.notify: off",
+		}
 		for _, bin := range []string{"xdg-open", "notify-send"} {
 			if _, err := exec.LookPath(bin); err != nil {
-				add(bin, false, "not on PATH", "optional; opening the app and notifications need it")
+				add(bin, false, "not on PATH", optional[bin])
 			} else {
 				add(bin, true, "", "")
 			}
@@ -259,16 +267,16 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 		if cfg.Daemon.InboxUI != "" {
 			url, err := inboxURL()
 			if err != nil {
-				add("inbox page", false, "not running", "start the daemon; it serves the page on "+cfg.Daemon.InboxUI)
+				add("inbox page", false, "not running", "start the daemon, which serves it on "+cfg.Daemon.InboxUI+": wormhole daemon")
 			} else {
 				client := &http.Client{Timeout: 3 * time.Second}
 				resp, err := client.Get(strings.Replace(url, "/?t=", "/api/health?t=", 1))
 				switch {
 				case err != nil:
-					add("inbox page", false, err.Error(), "the daemon that wrote "+config.InboxURLFile()+" is gone; restart the daemon")
+					add("inbox page", false, err.Error(), "the daemon that wrote "+config.InboxURLFile()+" is gone; "+restartDaemonFix)
 				case resp.StatusCode != http.StatusOK:
 					resp.Body.Close()
-					add("inbox page", false, resp.Status, "restart the daemon")
+					add("inbox page", false, resp.Status, restartDaemonFix)
 				default:
 					resp.Body.Close()
 					add("inbox page", true, cfg.Daemon.InboxUI+" (wormhole inbox --ui)", "")
@@ -276,10 +284,10 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 			}
 		}
 		display := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
-		add("display", display, "", "systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS")
+		add("display", display, "", "run: systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS")
 		// Without the session bus the Copilot CLI waits on a keychain it cannot
 		// reach; M0 measured a two-minute stall per kickoff.
-		add("session bus", os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "", "", "DBUS_SESSION_BUS_ADDRESS is unset; copilot stalls on its keychain without it: systemctl --user import-environment DBUS_SESSION_BUS_ADDRESS")
+		add("session bus", os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "", "", "DBUS_SESSION_BUS_ADDRESS is unset and copilot stalls on its keychain without it; run: systemctl --user import-environment DBUS_SESSION_BUS_ADDRESS")
 
 		if deepLink {
 			app := a.NewGHApp(cfg)
@@ -291,7 +299,7 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 				if errors.As(err, &re) && re.Output != "" {
 					detail += ": " + re.Output
 				}
-				add("deep-link: create session", false, detail, "")
+				add("deep-link: create session", false, detail, "check copilot.binary and copilot.extra_args in "+cfg.Path)
 			} else {
 				add("deep-link: create session", true, id, "")
 				if err := app.Open(ctx, id); err != nil {
@@ -304,6 +312,63 @@ func (a *App) newDoctorCommand(c *common) *cobra.Command {
 		return a.doctorReport(c, checks)
 	}
 	return cmd
+}
+
+const (
+	// adminInitFix resolves a missing stream or registry bucket.
+	adminInitFix = "ask the bus admin to run: wormhole admin init, or restart wormhole serve"
+	// restartDaemonFix restarts the daemon however it runs.
+	restartDaemonFix = "restart the daemon: systemctl --user restart wormhole, or rerun: wormhole daemon"
+)
+
+// configFix names what resolves a config that would not load.
+func configFix(path string, err error) string {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return "run: wormhole init, or join a bus with: wormhole join <invite>"
+	case errors.Is(err, config.ErrWorldReadable):
+		return "run: chmod 600 " + path
+	case errors.Is(err, config.ErrInGitTree):
+		return "move the credentials out of the repository and point bus.password_file or bus.creds in " + path + " at the new place"
+	}
+	return "fix the key named above in " + path + ", or rewrite it with: wormhole init"
+}
+
+// credentialsCheck reports whether the bus credential the config names is
+// on disk.
+func credentialsCheck(cfg *config.Config) (string, bool, string, string) {
+	const name = "credentials"
+	if cfg.Bus.Kind != "nats" {
+		return name, true, "not needed for bus.kind " + cfg.Bus.Kind, ""
+	}
+	for _, p := range []string{cfg.Bus.Creds, cfg.Bus.PasswordFile} {
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			return name, true, p, ""
+		}
+	}
+	missing := cfg.Bus.PasswordFile
+	if cfg.Bus.Creds != "" {
+		missing = cfg.Bus.Creds
+	}
+	return name, false, missing + " does not exist", "run: wormhole login, or rejoin with: wormhole join <invite>"
+}
+
+// sendersCheck warns, without failing, when nobody may ask this user.
+func sendersCheck(cfg *config.Config) (string, bool, string, string) {
+	if len(cfg.Senders) == 0 {
+		return "senders", true, noSendersMessage, noSendersMessage
+	}
+	names := make([]string, len(cfg.Senders))
+	for i, s := range cfg.Senders {
+		names[i] = s.Handle
+		if s.Mode == config.ModeAuto {
+			names[i] += " (auto)"
+		}
+	}
+	return "senders", true, strings.Join(names, ", "), ""
 }
 
 // doctorReport emits health checks and fails when any check is unhealthy.
@@ -321,8 +386,8 @@ func (a *App) doctorReport(c *common, checks []check) error {
 				mark = "FAIL"
 			}
 			fmt.Fprintf(w, "%s %-24s %s\n", mark, ch.Name, ch.Detail)
-			if !ch.OK && ch.Hint != "" {
-				fmt.Fprintf(w, "     -> %s\n", ch.Hint)
+			if !ch.OK && ch.Fix != "" {
+				fmt.Fprintf(w, "     -> %s\n", ch.Fix)
 			}
 		}
 	})
@@ -378,7 +443,7 @@ func (a *App) newLoginCommand(c *common) *cobra.Command {
 		}
 		if d, ok := config.InGitTree(dest); ok {
 			_ = os.Remove(dest)
-			return fail(ExitRefused, "%s is inside the git working tree %s; move your config directory out of it", dest, d)
+			return fail(ExitRefused, "%s is inside the git working tree %s; move your config directory out of it (set WORMHOLE_CONFIG_DIR), then rerun: wormhole login", dest, d)
 		}
 		// Reload so the new file is picked up, then verify the connection.
 		cfg, err = a.loadConfig(c)
@@ -387,7 +452,7 @@ func (a *App) newLoginCommand(c *common) *cobra.Command {
 		}
 		b, err := a.NewBus(cmd.Context(), cfg)
 		if err != nil {
-			return fail(ExitUnavailable, "credentials saved to %s but the bus refused them: %v", dest, err)
+			return fail(ExitUnavailable, "credentials saved to %s but the bus refused them: %v; check bus.url in %s and the credential, then rerun: wormhole login", dest, err, cfg.Path)
 		}
 		_ = b.Close()
 		a.emit(c, map[string]any{"ok": true, "path": dest}, func(w io.Writer) {
@@ -466,11 +531,11 @@ func (a *App) newAdminCommand(c *common) *cobra.Command {
 		}
 		nc, err := natsbus.AdminConnect(url, user, pw, ca)
 		if err != nil {
-			return fail(ExitUnavailable, "connect: %v", err)
+			return fail(ExitUnavailable, "connect: %v; check --url, --user and --password-file, then rerun: wormhole admin init", err)
 		}
 		defer nc.Close()
 		if err := natsbus.EnsureInfrastructure(cmd.Context(), nc); err != nil {
-			return fail(ExitUnavailable, "%v", err)
+			return fail(ExitUnavailable, "%v; the admin user needs JetStream on that server; fix its account, then rerun: wormhole admin init", err)
 		}
 		a.emit(c, map[string]any{"ok": true, "stream": natsbus.StreamName, "bucket": natsbus.BucketName}, func(w io.Writer) {
 			fmt.Fprintf(w, "stream %s and bucket %s are ready on %s\n", natsbus.StreamName, natsbus.BucketName, url)
