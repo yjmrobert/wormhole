@@ -78,6 +78,9 @@ func TestBuildSite(t *testing.T) {
 			t.Errorf("home page lacks the %s glass pane", cls)
 		}
 	}
+	if !strings.Contains(string(home), `data-wormhole-toggle`) || !strings.Contains(string(home), `wh-wormhole`) {
+		t.Error("home page lacks the wormhole switch or its remembered preference")
+	}
 	if strings.Contains(string(home), "cdn.") || strings.Contains(string(home), "https://unpkg") || strings.Contains(string(home), "googleapis") {
 		t.Error("the page references a third-party host")
 	}

@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="{{.Base}}assets/fonts.css">
 <link rel="stylesheet" href="{{.Base}}assets/style.css">
 <script>
-(function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+(function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}if(localStorage.getItem("wh-wormhole")==="off"){document.documentElement.setAttribute("data-wormhole","off");}}catch(e){}})();
 </script>
 </head>
 <body class="{{if .Home}}home{{else}}page-{{.Page.Slug}}{{end}}">
@@ -31,6 +31,9 @@
   <nav class="masthead-links" aria-label="Project links">
     <a class="rev" href="{{.Repo}}/releases" title="Latest release">{{.Version}}</a>
     <a href="{{.Repo}}">GitHub</a>
+    <button class="theme motion" type="button" aria-label="Turn the wormhole off" aria-pressed="true" data-wormhole-toggle>
+      <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="2.2"/><ellipse cx="10" cy="10" rx="8" ry="3.2"/><ellipse cx="10" cy="10" rx="8" ry="3.2" transform="rotate(60 10 10)"/><ellipse cx="10" cy="10" rx="8" ry="3.2" transform="rotate(-60 10 10)"/></svg>
+    </button>
     <button class="theme" type="button" aria-label="Switch to dark theme" data-theme-toggle>
       <svg class="icon sun" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="3.6"/><path d="M10 1.5v2.6M10 15.9v2.6M1.5 10h2.6M15.9 10h2.6M4 4l1.8 1.8M14.2 14.2 16 16M4 16l1.8-1.8M14.2 5.8 16 4"/></svg>
       <svg class="icon moon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7Z"/></svg>
