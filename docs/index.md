@@ -28,7 +28,7 @@ in the session that asked, so replies open a separate session by default;
 - [Install and configure](install.md): the bus, the daemon, the skill.
 - [Using it](usage.md): the CLI, delivery modes, what the recipient sees.
 - [Design](design.md): architecture, envelope, security model.
-- [Roadmap](roadmap.md): milestones M0 to M5.
+- [Roadmap](roadmap.md): milestones M0 to M8 and their gates.
 - [Releases](https://github.com/yjmrobert/wormhole/releases): Linux
   binaries with checksums.
 - [Security policy](https://github.com/yjmrobert/wormhole/blob/main/SECURITY.md):

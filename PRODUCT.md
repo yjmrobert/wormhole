@@ -31,7 +31,7 @@ Documentation lives as Markdown under `docs/` and is the source of truth; the si
 - Static output only; no server-side search. Client-side search over a generated index is acceptable.
 - Deployed at https://yjmrobert.github.io/wormhole/ under a subpath, so every asset and link must be relative or prefixed.
 - Fonts and scripts are self-hosted; the docs make no third-party requests at runtime. The binary sends no telemetry, and explicitly enabled update checks contact GitHub Releases only.
-- Linux-only product for now; macOS and Windows arrive in M4. Pre-1.0: the M0 spike has not been run on real machines, and the docs say so.
+- Linux-only product; macOS and Windows are not planned until a contributor needs them. Pre-1.0: the M0 spike has not been run on real machines, and the docs say so.
 - Placeholder names only: `alice`, `bob`, `bus.example.internal`, `<owner>/<repo>`. Nothing that identifies a deployment.
 - Terminology: handle, thread, ask, reply, send, inbox mode, auto mode, daemon (`wormholed`), bus, envelope, hop, receipt (ack), dead letters.
 

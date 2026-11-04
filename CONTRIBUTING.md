@@ -49,3 +49,8 @@ and are not run in CI.
 - `internal/ghapp` is the only package allowed to know the `ghapp://`
   scheme; a test enforces that.
 - Run `gofmt`, `go vet` and `make test` before pushing.
+- Developer experience is a review criterion. The rules in
+  `docs/roadmap.md` apply to every change: a new config key needs a
+  default that works, a new error names its fix, a new verb is reachable
+  from every surface, and anything the binary can generate for the person
+  is generated rather than documented.

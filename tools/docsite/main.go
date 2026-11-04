@@ -59,7 +59,7 @@ var sheets = []Sheet{
 	{Slug: "install", Source: "docs/install.md", Label: "Install and configure", Summary: "The bus, the daemon, the skill"},
 	{Slug: "usage", Source: "docs/usage.md", Label: "Using it", Summary: "Commands, delivery modes, kill switches"},
 	{Slug: "design", Source: "docs/design.md", Label: "Design", Summary: "Architecture, envelope, security model"},
-	{Slug: "roadmap", Source: "docs/roadmap.md", Label: "Roadmap", Summary: "Milestones M0 to M5 and their gates"},
+	{Slug: "roadmap", Source: "docs/roadmap.md", Label: "Roadmap", Summary: "Milestones M0 to M8 and their gates"},
 	{Slug: "m0-spike", Source: "docs/m0-spike.md", Label: "M0 spike", Summary: "The questions only real machines can answer"},
 	{Slug: "skill", Source: "skills/wormhole/SKILL.md", Label: "The skill", Summary: "What the agent reads", Skill: true, Title: "The Wormhole skill"},
 }
