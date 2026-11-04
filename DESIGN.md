@@ -45,7 +45,7 @@ The glass (alpha is what makes it glass; the hue stays navy or paper):
 
 | Role | Dark | Light |
 | --- | --- | --- |
-| `--glass` panes | `oklch(13% 0.05 287 / .6)` | `oklch(98.5% 0.006 300 / .74)` |
+| `--glass` panes | `oklch(13% 0.05 287 / .66)` | `oklch(98.5% 0.006 300 / .74)` |
 | `--glass-2` code, tables, cards | `oklch(15% 0.05 288 / .74)` | `oklch(99.5% 0.004 300 / .82)` |
 | `--glass-3` chips, hover, inputs | `oklch(22% 0.06 290 / .6)` | `oklch(94% 0.02 300 / .7)` |
 | `--glass-edge` hairline | `oklch(96% 0.01 300 / .13)` | `oklch(18% 0.05 290 / .14)` |
@@ -122,7 +122,9 @@ becomes a row of pills, the terminal cards hide, the hero shrinks; under
   difference) and steps down further if frames run long.
 - Masthead: a glass strip with a magenta-to-cyan hairline along its foot,
   wordmark (cyan and magenta mark plus WORMHOLE in Chakra Petch), pill
-  search, release tag chip, GitHub link, theme switch.
+  search, release tag chip, GitHub link, wormhole switch (an orbit icon,
+  `aria-pressed`, cyan ring while on), theme switch. Under 480px the chip
+  hides so the search keeps its width.
 - Hero (home only): a clear window onto the throat, the neon title at 22%
   from the top, two glass terminal cards, and a glass kicker pill ("Ask
   across machines") with a cyan thread hanging from it. `hero()` in
@@ -149,10 +151,19 @@ Three movements, all ambient, all stoppable:
 
 1. The wormhole. The camera rolls slowly and falls down the tunnel; the
    walls scroll, rings rush out, streaks pass, the grid floor runs toward
-   the reader, the throat pulses in front of the sun, the stars twinkle. It is the one thing computed at runtime, and
-   it pays for itself: below device resolution, paused when the tab is
-   hidden, stepping down resolution and noise octaves when a frame
-   averages over 24 ms.
+   the reader, the throat pulses in front of the sun, the stars twinkle.
+   It has a calm level: 0 while the home hero window is in view, 1 on
+   reading pages and once the hero has scrolled away. Calm halves the
+   speed of the fall, thins the smoke, filaments and rings, removes the
+   dust, all but removes the streaks, deepens the vignette and takes a
+   fifth of the saturation out, so the column reads over a dark drift and
+   the full show lives in the hero. It is the one thing computed at
+   runtime, and it pays for itself: below device resolution, paused when
+   the tab is hidden, stepping down resolution and noise octaves when a
+   frame averages over 24 ms. The reader can turn it off: the orbit button
+   in the masthead sets `data-wormhole="off"` on the root, remembered in
+   `localStorage` like the theme and applied before first paint; the
+   canvas hides, the star field returns, the panes stay glass over navy.
 2. Figure 1 plays the round trip as one looped 16 s story (`--loop`),
    unchanged from the first design: envelope, bus pulse, cards, receipt,
    a four-step caption strip with ticks.
