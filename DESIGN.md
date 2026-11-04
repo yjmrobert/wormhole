@@ -30,8 +30,10 @@ and tables as slightly denser glass.
 
 Dark is the native state. Light is the same glass with the lights on
 (near-white panes, navy ink, cyan and magenta darkened for contrast), and
-the wormhole behind it is printed pale on paper as a cyanotype, so the
-panes stay readable and the motion stays visible.
+the wormhole behind it is the same scene printed in ink on paper: every
+feature that adds light at night subtracts its complement on paper, so
+cyan, magenta and violet stay saturated, white stars and the hot core fall
+away, and the smoke prints at under half weight so the ground stays paper.
 
 ## Tokens
 
@@ -57,7 +59,7 @@ panes go nearly opaque without `backdrop-filter` support, under
 
 The wormhole's own palette is fixed in the shader (navy, violet, magenta,
 cyan, white) and matches these tokens by eye; `u_light` crossfades it to
-the paper rendering when the theme switches.
+the ink-on-paper rendering when the theme switches.
 
 | Role | Dark | Light |
 | --- | --- | --- |
