@@ -93,12 +93,13 @@ func TestJoinExchange(t *testing.T) {
 	// Loopback is listed last; the test machine can only reach that one.
 	inv.URLs = []string{inv.URLs[len(inv.URLs)-1]}
 	ca := caFile(t, inv)
-	pw, err := Redeem(context.Background(), inv, ca, "bob-laptop", 5*time.Second)
+	red, err := Redeem(context.Background(), inv, ca, "bob-laptop", 5*time.Second)
 	if err != nil {
 		t.Fatalf("redeem: %v", err)
 	}
-	if pw == "" {
-		t.Fatal("empty password")
+	pw := red.Password
+	if pw == "" || red.URL != inv.URLs[0] {
+		t.Fatalf("redeemed = %+v", red)
 	}
 	// The credential works and carries the Wormhole ACL.
 	b, err := natsbus.Connect(context.Background(), natsbus.Options{URL: inv.URLs[0], User: "bob", Password: pw, TLSCA: ca})
@@ -135,10 +136,11 @@ func TestJoinExchange(t *testing.T) {
 	}
 	inv2, _ := Decode(tok2)
 	inv2.URLs = inv.URLs
-	pw2, err := Redeem(context.Background(), inv2, ca, "bob-laptop", 5*time.Second)
+	red2, err := Redeem(context.Background(), inv2, ca, "bob-laptop", 5*time.Second)
 	if err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
+	pw2 := red2.Password
 	if pw2 == pw {
 		t.Fatal("rotate kept the password")
 	}
@@ -211,10 +213,11 @@ func TestRestartKeepsCAAndUsers(t *testing.T) {
 	inv, _ := Decode(tok)
 	inv.URLs = []string{s.ClientURLs()[len(s.ClientURLs())-1]}
 	ca := caFile(t, inv)
-	pw, err := Redeem(context.Background(), inv, ca, "bob-laptop", 5*time.Second)
+	red, err := Redeem(context.Background(), inv, ca, "bob-laptop", 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
+	pw := red.Password
 	s.Close()
 	s2 := start(t, dir)
 	if s2.CAFingerprint() != fp {

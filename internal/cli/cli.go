@@ -23,6 +23,7 @@ import (
 	natsbus "github.com/yjmrobert/wormhole/internal/bus/nats"
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/ghapp"
+	"github.com/yjmrobert/wormhole/internal/systemd"
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
@@ -65,6 +66,12 @@ type App struct {
 	OpenStore  func() (*threads.Store, error)
 	NewUpdater func() (releaseUpdater, error)
 	Reexec     func() error
+	// LookPath finds binaries on PATH (agent detection); nil means exec.LookPath.
+	LookPath func(string) (string, error)
+	// Systemctl runs systemctl for the service commands; nil means the real one.
+	Systemctl systemd.Runner
+	// Executable is this binary's path for generated units; nil means os.Executable.
+	Executable func() (string, error)
 	Now        func() time.Time
 	Hostname   string
 	Version    string
@@ -232,6 +239,8 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 		a.newUpdateCommand(c),
 		a.newManCommand(),
 		a.newSendersCommand(c),
+		a.newSkillCommand(c),
+		a.newServiceCommand(c),
 	)
 	a.registerCompletions(root, c)
 	return root, c

@@ -462,7 +462,7 @@ func (s *Server) Wait(ctx context.Context) {
 // user over TLS, trusting the CA the token carries, and ask for the
 // credential. It is what `wormhole join` runs; it is here so tests and the
 // serving machine's own join share it. caFile is a PEM file holding the CA.
-func Redeem(ctx context.Context, inv Invite, caFile, host string, timeout time.Duration) (string, error) {
+func Redeem(ctx context.Context, inv Invite, caFile, host string, timeout time.Duration) (Redeemed, error) {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
@@ -472,19 +472,26 @@ func Redeem(ctx context.Context, inv Invite, caFile, host string, timeout time.D
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
-				return "", ctx.Err()
+				return Redeemed{}, ctx.Err()
 			case <-time.After(500 * time.Millisecond):
 			}
 		}
-		pw, retry, err := redeemOnce(ctx, inv, caFile, host)
+		r, retry, err := redeemOnce(ctx, inv, caFile, host)
 		if err == nil {
-			return pw, nil
+			return r, nil
 		}
 		lastErr = err
 		if !retry || time.Now().After(deadline) {
-			return "", lastErr
+			return Redeemed{}, lastErr
 		}
 	}
+}
+
+// Redeemed is what a successful exchange yields.
+type Redeemed struct {
+	Password string
+	// URL is the address that answered, which join puts first in bus.url.
+	URL string
 }
 
 // ErrRefused marks a join the server answered with a reason, as opposed to
@@ -492,7 +499,7 @@ func Redeem(ctx context.Context, inv Invite, caFile, host string, timeout time.D
 var ErrRefused = errors.New("join refused")
 
 // redeemOnce is one attempt; retry says whether waiting may help.
-func redeemOnce(ctx context.Context, inv Invite, caFile, host string) (string, bool, error) {
+func redeemOnce(ctx context.Context, inv Invite, caFile, host string) (Redeemed, bool, error) {
 	nc, err := natsgo.Connect(strings.Join(inv.URLs, ","),
 		natsgo.Name("wormhole/join"),
 		natsgo.UserInfo(inv.JoinUser(), inv.Secret),
@@ -505,24 +512,69 @@ func redeemOnce(ctx context.Context, inv Invite, caFile, host string) (string, b
 		if errors.Is(err, natsgo.ErrAuthorization) {
 			// The join user is not there (yet): an invite minted a moment
 			// ago, or one already spent.
-			return "", true, fmt.Errorf("the bus rejected the invite's credential: %w", err)
+			return Redeemed{}, true, fmt.Errorf("the bus rejected the invite's credential: %w", err)
 		}
-		return "", true, err
+		return Redeemed{}, true, err
 	}
 	defer nc.Close()
+	connected := nc.ConnectedUrl()
 	body, _ := json.Marshal(JoinRequest{Handle: inv.Handle, Host: host})
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	msg, err := nc.RequestWithContext(reqCtx, inv.JoinSubject(), body)
 	if err != nil {
-		return "", true, fmt.Errorf("join request: %w", err)
+		return Redeemed{}, true, fmt.Errorf("join request: %w", err)
 	}
 	var resp JoinResponse
 	if err := json.Unmarshal(msg.Data, &resp); err != nil {
-		return "", false, fmt.Errorf("join response: %w", err)
+		return Redeemed{}, false, fmt.Errorf("join response: %w", err)
 	}
 	if !resp.OK {
-		return "", false, fmt.Errorf("%w: %s", ErrRefused, resp.Error)
+		return Redeemed{}, false, fmt.Errorf("%w: %s", ErrRefused, resp.Error)
 	}
-	return resp.Password, false, nil
+	return Redeemed{Password: resp.Password, URL: connected}, false, nil
+}
+
+// Prepare creates the state directory, the CA and the admin credential
+// and records the addresses invites will carry, without starting the
+// server. `wormhole serve install` uses it so invites can be minted before
+// the service is up; Start does the same work when it runs first.
+func Prepare(o Options) ([]string, error) {
+	if o.StateDir == "" {
+		return nil, errors.New("serve: StateDir is required")
+	}
+	if o.Listen == "" {
+		o.Listen = DefaultListen
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	if o.Hostname == "" {
+		o.Hostname, _ = os.Hostname()
+	}
+	if err := os.MkdirAll(o.StateDir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(o.StateDir, 0o700); err != nil {
+		return nil, err
+	}
+	if _, err := loadOrCreateCA(o.StateDir, o.Now()); err != nil {
+		return nil, fmt.Errorf("tls: %w", err)
+	}
+	if _, err := ensureAdmin(o.StateDir, o.BcryptCost); err != nil {
+		return nil, err
+	}
+	_, port, err := splitListen(o.Listen)
+	if err != nil {
+		return nil, err
+	}
+	if port < 0 {
+		return nil, errors.New("serve: a fixed port is needed to prepare invites")
+	}
+	dns, ips := localNames(o.Hostname, o.Advertise)
+	urls := clientURLs(o.Hostname, dns, ips, port)
+	if err := writePrivate(filepath.Join(o.StateDir, advertiseFile), []byte(strings.Join(urls, "\n")+"\n")); err != nil {
+		return nil, err
+	}
+	return urls, nil
 }
