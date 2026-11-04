@@ -18,7 +18,7 @@ Non-goals for v1:
 - No attachments; links and pasted snippets only (32 KB body cap).
 - No replacement for human chat.
 - No hosted service; every team runs its own bus from the deploy templates.
-- No macOS or Windows daemon until M4; v0 is Linux-only.
+- No macOS or Windows daemon; Linux is the only supported desktop until a contributor on another one needs it.
 
 ## Public and private
 
@@ -369,7 +369,7 @@ on someone else's machine.
   wormhole`; server side, remove the user from `accounts.conf` and purge
   their subjects.
 
-Auth in v0 is TLS plus static users in `accounts.conf`. M4 moves to `nsc`
+Auth in v0 is TLS plus static users in `accounts.conf`. M8 moves to `nsc`
 operator/account/user JWTs so `wormhole login --creds` can install minted
 credentials and revocation is `nsc revoke`.
 
