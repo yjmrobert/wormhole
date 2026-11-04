@@ -113,6 +113,32 @@ func (a *App) registerCompletions(root *cobra.Command, c *common) {
 	if cmd, _, err := root.Find([]string{"threads"}); err == nil {
 		_ = cmd.RegisterFlagCompletionFunc("peer", a.completeHandles(c))
 	}
+	if cmd, _, err := root.Find([]string{"senders", "add"}); err == nil && cmd.Name() == "add" {
+		cmd.ValidArgsFunction = a.completeHandles(c)
+	}
+	if cmd, _, err := root.Find([]string{"senders", "remove"}); err == nil && cmd.Name() == "remove" {
+		cmd.ValidArgsFunction = a.completeSenders(c)
+	}
+}
+
+// completeSenders completes the handles under senders: in the config.
+func (a *App) completeSenders(c *common) cobra.CompletionFunc {
+	return func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) != 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		cfg, err := a.loadConfig(c)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var values []string
+		for _, s := range cfg.Senders {
+			if strings.HasPrefix(s.Handle, strings.TrimPrefix(toComplete, "^")) {
+				values = append(values, s.Handle+"\t"+s.Mode)
+			}
+		}
+		return values, cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 // completeHandles completes handles from the registry, or, when the config
