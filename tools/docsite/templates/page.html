@@ -16,6 +16,7 @@
 <body class="{{if .Home}}home{{else}}page-{{.Page.Slug}}{{end}}">
 <a class="skip" href="#content">Skip to content</a>
 {{.StarField}}
+<canvas class="wormhole" aria-hidden="true"></canvas>
 <header class="masthead">
   <a class="wordmark" href="{{.Base}}" aria-label="Wormhole home">
     <svg class="mark" viewBox="0 0 34 20" aria-hidden="true" focusable="false"><circle cx="6" cy="10" r="4.25"/><circle cx="28" cy="10" r="4.25"/><path d="M10.2 10 C 14.5 1.5, 19.5 18.5, 23.8 10"/></svg>
@@ -42,9 +43,10 @@
   <div class="hero">
     {{.Hero}}
     <h1 class="title">{{.Page.Title}}</h1>
+    <p class="hero-kicker">Ask across machines</p>
   </div>
   {{end}}
-  <nav class="rail" aria-label="Index">
+  <nav class="rail pane" aria-label="Index">
     <p class="rail-title">Index</p>
     <ol>
     {{range .Sheets}}
@@ -53,7 +55,7 @@
     </ol>
   </nav>
 
-  <main id="content" class="column">
+  <main id="content" class="column pane">
     {{if not .Home}}<h1 class="title">{{.Page.Title}}</h1>{{end}}
     {{if .Home}}
     <div class="lede">{{.Page.Lede}}</div>
@@ -87,7 +89,7 @@
   </main>
 
   {{if .Page.Headings}}
-  <aside class="contents">
+  <aside class="contents pane">
     <p class="contents-title">On this page</p>
     <ol>
     {{range .Page.Headings}}<li class="h{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
@@ -101,5 +103,6 @@
   <p>These pages are rendered from the repository's docs by a small Go program; the site makes no third-party requests.</p>
 </footer>
 <script src="{{.Base}}assets/site.js" defer></script>
+<script src="{{.Base}}assets/wormhole.js" defer></script>
 </body>
 </html>

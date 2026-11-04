@@ -47,7 +47,7 @@ func TestBuildSite(t *testing.T) {
 			}
 		}
 	}
-	for _, f := range []string{"404.html", ".nojekyll", "search.json", "assets/style.css", "assets/site.js", "assets/fonts.css", "assets/favicon.svg", "assets/fonts/monoton-400-normal-latin.woff2", "assets/fonts/chakra-petch-700-normal-latin.woff2", "assets/fonts/exo-2-400-normal-latin.woff2", "assets/fonts/OFL-Monoton.txt", "assets/fonts/OFL-ChakraPetch.txt", "assets/fonts/OFL-Exo2.txt"} {
+	for _, f := range []string{"404.html", ".nojekyll", "search.json", "assets/style.css", "assets/site.js", "assets/wormhole.js", "assets/fonts.css", "assets/favicon.svg", "assets/fonts/monoton-400-normal-latin.woff2", "assets/fonts/chakra-petch-700-normal-latin.woff2", "assets/fonts/exo-2-400-normal-latin.woff2", "assets/fonts/OFL-Monoton.txt", "assets/fonts/OFL-ChakraPetch.txt", "assets/fonts/OFL-Exo2.txt"} {
 		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
 			t.Errorf("missing %s", f)
 		}
@@ -67,8 +67,19 @@ func TestBuildSite(t *testing.T) {
 	if !strings.Contains(string(home), `class="drawing drawing-landscape"`) || !strings.Contains(string(home), `class="lede"`) {
 		t.Error("home page lacks the schematic or the lede")
 	}
-	if !strings.Contains(string(home), `class="hero"`) || !strings.Contains(string(home), `class="hero-mesh"`) || strings.Count(string(home), `<h1 class="title">`) != 1 {
+	if !strings.Contains(string(home), `class="hero"`) || !strings.Contains(string(home), `class="hero-term hero-term-a"`) || strings.Count(string(home), `<h1 class="title">`) != 1 {
 		t.Error("home page lacks the hero, or has more than one title")
+	}
+	if !strings.Contains(string(home), `<canvas class="wormhole"`) || !strings.Contains(string(home), `assets/wormhole.js`) {
+		t.Error("home page lacks the wormhole canvas or its script")
+	}
+	for _, cls := range []string{`class="rail pane"`, `class="column pane"`, `class="contents pane"`} {
+		if !strings.Contains(string(home), cls) {
+			t.Errorf("home page lacks the %s glass pane", cls)
+		}
+	}
+	if strings.Contains(string(home), "cdn.") || strings.Contains(string(home), "https://unpkg") || strings.Contains(string(home), "googleapis") {
+		t.Error("the page references a third-party host")
 	}
 	if strings.Contains(string(home), "Drawing index") || strings.Contains(string(home), "On this sheet") {
 		t.Error("the drafting vocabulary is still in the template")

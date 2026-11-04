@@ -8,23 +8,50 @@ is a CLI and daemon; this file covers the site.
 
 ## World
 
-A 1984 night. The home page opens on a neon horizon: a wireframe floor in
-perspective, magenta lines running toward the reader and cyan lines across,
-bent into a well under the wormhole, which stands on the horizon as a
-striped magenta disc inside a pulsing cyan ring. The wordmark is a neon
-sign above it. Two terminal cards on the floor show the ask and the inbox.
-Everything below the horizon is a calm document: deep navy, cyan links,
-magenta for the one thing in motion, terminal-style code blocks.
+A 1984 night, seen through glass. Behind every page a wormhole runs in
+WebGL (`assets/wormhole.js`): the camera falls down a bending tunnel whose
+walls are violet smoke threaded with cyan and magenta filaments, rings
+rush out past the viewer, warp streaks pass at the edges, and the throat
+is a lensed window onto the stars on the far side, ringed by a thin cyan
+horizon. The page itself is a set of frosted panes floating over it:
+the masthead strip, the index rail, the reading column, the contents
+card. The wormhole shows through them softened and darkened; between
+them, and in the home page's hero window, it shows clear. The wordmark is
+a neon sign over the throat; two terminal cards float in the window and
+show the ask and the inbox. Inside the column everything is a calm
+document: cyan links, magenta for the one thing in motion, code blocks
+and tables as slightly denser glass.
 
-Dark is the native state. Light is the same site with the lights on
-(lavender-white paper, navy ink, cyan and magenta darkened for contrast),
-and the hero stays a night window inside it.
+Dark is the native state. Light is the same glass with the lights on
+(near-white panes, navy ink, cyan and magenta darkened for contrast), and
+the wormhole behind it is printed pale on paper as a cyanotype, so the
+panes stay readable and the motion stays visible.
 
 ## Tokens
 
 Defined on `:root` in `assets/style.css`; light values on
 `[data-theme="light"]` and under `prefers-color-scheme: light` when no
 theme is set. The machine copy lives in `.impeccable/design.json`.
+
+The glass (alpha is what makes it glass; the hue stays navy or paper):
+
+| Role | Dark | Light |
+| --- | --- | --- |
+| `--glass` panes | `oklch(13% 0.05 287 / .6)` | `oklch(98.5% 0.006 300 / .74)` |
+| `--glass-2` code, tables, cards | `oklch(15% 0.05 288 / .74)` | `oklch(99.5% 0.004 300 / .82)` |
+| `--glass-3` chips, hover, inputs | `oklch(22% 0.06 290 / .6)` | `oklch(94% 0.02 300 / .7)` |
+| `--glass-edge` hairline | `oklch(96% 0.01 300 / .13)` | `oklch(18% 0.05 290 / .14)` |
+| `--glass-hi` inner top highlight | `oklch(96% 0.01 300 / .09)` | `oklch(100% 0 0 / .9)` |
+| `--blur` backdrop blur | 18px (14px under 840px) | same |
+
+Every pane is `.pane`: that background, the hairline, the inner highlight,
+a 135° sheen, `backdrop-filter: blur(var(--blur)) saturate(1.25)`. The
+panes go nearly opaque without `backdrop-filter` support, under
+`prefers-reduced-transparency`, and under `prefers-contrast: more`.
+
+The wormhole's own palette is fixed in the shader (navy, violet, magenta,
+cyan, white) and matches these tokens by eye; `u_light` crossfades it to
+the paper rendering when the theme switches.
 
 | Role | Dark | Light |
 | --- | --- | --- |
@@ -78,11 +105,20 @@ becomes a row of pills, the terminal cards hide, the hero shrinks; under
 
 ## Components
 
-- Masthead: frosted navy, wordmark (cyan and magenta mark plus WORMHOLE in
-  Chakra Petch), pill search, release tag chip, GitHub link, theme switch.
-- Hero (home only): sky gradient, sun, ring, mesh, haze, floor fade, two
-  terminal cards, the title. The mesh is emitted by `hero()` in `main.go`.
-- Rail: "Index", numbered pages, the current one on a cyan panel.
+- The wormhole: a fixed `<canvas class="wormhole">` under everything,
+  drawn by `assets/wormhole.js` with one fragment shader and no library.
+  The throat sits in the hero window on the home page and follows it as
+  the page scrolls; on reading pages it keeps to the right, behind the
+  contents card, away from the column. The pointer nudges it by a few
+  percent. It renders at 0.6 to 0.7 of device pixels (the frost hides the
+  difference) and steps down further if frames run long.
+- Masthead: a glass strip, wordmark (cyan and magenta mark plus WORMHOLE
+  in Chakra Petch), pill search, release tag chip, GitHub link, theme switch.
+- Hero (home only): a clear window onto the throat, the neon title at 22%
+  from the top, two glass terminal cards, and a glass kicker pill ("Ask
+  across machines") with a cyan thread hanging from it. `hero()` in
+  `main.go` emits only the cards.
+- Rail: a glass card, "Index", numbered pages, the current one on a cyan panel.
 - Lede, primary action as a cyan pill, secondary as a magenta-underlined link.
 - Figure 1 (home only): the round-trip schematic in two layouts; cyan ask
   lanes, magenta reply lanes, violet bus, pink envelope with a glow.
@@ -92,7 +128,6 @@ becomes a row of pills, the terminal cards hide, the hero shrinks; under
 - Pager: previous and next with magenta labels.
 - Title block: a readout panel, right-aligned, 560px max; numbers in cyan mono.
 - Contents ("On this page"): left-ruled list; the active heading in cyan.
-- Reading pages: a faint static grid floor fixed at the foot of the viewport.
 - Icons: authored single-stroke SVG at 1.6px stroke. No glyph or emoji icons.
 
 Browser surfaces are themed: selection (magenta on navy), caret (magenta),
@@ -103,16 +138,22 @@ tabular numerals in tables and the title block.
 
 Three movements, all ambient, all stoppable:
 
-1. The hero ring breathes over 7 s and the orb spirals into the well on an
-   11 s motion path. The mesh never changes.
+1. The wormhole. The camera rolls slowly and falls down the tunnel; the
+   walls scroll, rings rush out, streaks pass, the throat pulses, the
+   stars behind it twinkle. It is the one thing computed at runtime, and
+   it pays for itself: below device resolution, paused when the tab is
+   hidden, stepping down resolution and noise octaves when a frame
+   averages over 24 ms.
 2. Figure 1 plays the round trip as one looped 16 s story (`--loop`),
    unchanged from the first design: envelope, bus pulse, cards, receipt,
    a four-step caption strip with ticks.
-3. Three star layers drift upward over 140 to 260 s, dark theme only.
+3. Without WebGL, three star layers drift upward over 140 to 260 s, dark
+   theme only, under the same panes on plain navy.
 
 Everything else is 150 ms state feedback with `cubic-bezier(0.16, 1, 0.3, 1)`.
-Under `prefers-reduced-motion` the orb is hidden, the ring and stars hold,
-and the figure shows its finished state. Nothing is computed at runtime.
+Under `prefers-reduced-motion` the wormhole draws one still frame (and
+redraws it on resize, scroll and theme change), the stars hold, and the
+figure shows its finished state.
 
 ## Voice
 
