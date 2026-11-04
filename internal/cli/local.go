@@ -79,7 +79,7 @@ func (a *App) newInboxCommand(c *common) *cobra.Command {
 		}
 		if watch {
 			if c.noInput {
-				return fail(ExitRefused, "inbox --watch requires interactive input")
+				return fail(ExitRefused, "inbox --watch needs a terminal and prompts; list the inbox instead with: wormhole inbox")
 			}
 			return a.watch(cmd.Context(), c)
 		}
@@ -133,9 +133,9 @@ func (a *App) inboxUI(ctx context.Context, c *common) error {
 	url, err := inboxURL()
 	if err != nil {
 		if cfg.Daemon.InboxUI == "" {
-			return fail(ExitUnavailable, "the inbox page is off; set daemon.inbox_ui (127.0.0.1:7788) and restart the daemon")
+			return fail(ExitUnavailable, "the inbox page is off; set daemon.inbox_ui: 127.0.0.1:7788 in %s, then: systemctl --user restart wormhole", cfg.Path)
 		}
-		return fail(ExitUnavailable, "the inbox page is not running (no %s); start the daemon", config.InboxURLFile())
+		return fail(ExitUnavailable, "the inbox page is not running (no %s); start the daemon: systemctl --user start wormhole, or: wormhole daemon", config.InboxURLFile())
 	}
 	opened := false
 	var openErr string
@@ -213,7 +213,7 @@ func (a *App) newOpenCommand(c *common) *cobra.Command {
 					return err
 				}
 				if !ok {
-					return fail(ExitRefused, notStartedMessage)
+					return fail(ExitRefused, notStartedMessage+"; when ready: wormhole open %s", t.ID)
 				}
 			}
 		}
@@ -365,7 +365,7 @@ func (a *App) newUsersCommand(c *common) *cobra.Command {
 		defer b.Close()
 		list, err := b.Registry().List(cmd.Context())
 		if err != nil {
-			return fail(ExitUnavailable, "registry: %v", err)
+			return fail(ExitUnavailable, "registry: %v; the bus is missing its stream or bucket: restart wormhole serve, or ask its admin to run: wormhole admin init", err)
 		}
 		rows := make([]userRow, 0, len(list))
 		for _, p := range list {

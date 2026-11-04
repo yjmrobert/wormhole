@@ -218,7 +218,7 @@ func TestUnknownSenderRejected(t *testing.T) {
 	_ = mallory.Publish(context.Background(), bus.SubjectFor(ask), ask)
 	select {
 	case d := <-malloryIn:
-		if reason, ok := d.Env.Rejected(); !ok || reason != "sender not allowed" {
+		if reason, ok := d.Env.Rejected(); !ok || !strings.HasPrefix(reason, "sender not allowed; ask ^bob to run: wormhole senders add mallory") {
 			t.Fatalf("ack = %+v", d.Env)
 		}
 	case <-time.After(5 * time.Second):
@@ -239,7 +239,7 @@ func TestSpoofedFromRejected(t *testing.T) {
 	ask := envelope.NewAsk(envelope.Peer{User: "carol"}, "bob", "hi", time.Now())
 	_ = f.alice.Publish(context.Background(), bus.InboxSubject("bob", "alice"), ask)
 	acks := f.waitAck(t, 1)
-	if reason, ok := acks[0].Env.Rejected(); !ok || reason != "sender mismatch" || acks[0].Env.To.User != "alice" {
+	if reason, ok := acks[0].Env.Rejected(); !ok || !strings.HasPrefix(reason, "sender mismatch") || acks[0].Env.To.User != "alice" {
 		t.Fatalf("ack = %+v", acks[0].Env)
 	}
 }

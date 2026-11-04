@@ -56,7 +56,7 @@ func (a *App) guardBody(body string, forceUnsafe bool) error {
 		return fail(ExitUsage, "empty body")
 	}
 	if len(body) > envelope.MaxBodyBytes {
-		return fail(ExitRefused, "body is %d bytes; the cap is %d", len(body), envelope.MaxBodyBytes)
+		return fail(ExitRefused, "body is %d bytes; the cap is %d: shorten it, or send a link to the material", len(body), envelope.MaxBodyBytes)
 	}
 	if hits := envelope.ScanSecrets(body); len(hits) > 0 {
 		if !forceUnsafe {
@@ -86,7 +86,7 @@ func (a *App) review(c *common, e envelope.Envelope, yes bool) (bool, error) {
 		return false, err
 	}
 	if !ok {
-		return false, fail(ExitRefused, "not sent")
+		return false, fail(ExitRefused, "not sent; rerun when ready, with --yes to skip the prompt")
 	}
 	return true, nil
 }
@@ -119,7 +119,7 @@ func (a *App) publish(ctx context.Context, c *common, cfg *config.Config, store 
 		if errors.Is(err, bus.ErrPermission) {
 			return fail(ExitRefused, "%v", err)
 		}
-		return fail(ExitUnavailable, "publish: %v", err)
+		return fail(ExitUnavailable, "publish: %v; check the bus with: wormhole doctor", err)
 	}
 	if err := store.Put(ctx, t); err != nil {
 		return err
@@ -215,11 +215,11 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 	}
 	threadID := t.ID
 	if peer != "" && peer != t.Peer {
-		return fail(ExitNotFound, "thread %s is with ^%s, not ^%s", threadID, t.Peer, peer)
+		return fail(ExitNotFound, "thread %s is with ^%s, not ^%s; send to them: wormhole send %s --thread %s \"...\"", threadID, t.Peer, peer, t.Peer, threadID)
 	}
 	switch t.State {
 	case threads.StateClosed, threads.StateExpired, threads.StateRejected, threads.StateDeclined:
-		return fail(ExitRefused, "thread %s is %s", threadID, t.State)
+		return fail(ExitRefused, "thread %s is %s; start a new one: wormhole ask ^%s \"...\"", threadID, t.State, t.Peer)
 	}
 	last, err := store.LastMessage(ctx, threadID)
 	if err != nil {
@@ -230,7 +230,7 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 		return err
 	}
 	if prev.Hop+1 > cfg.Limits.MaxHops {
-		return fail(ExitRefused, "thread %s has reached max_hops (%d); start a new ask if it still matters", threadID, cfg.Limits.MaxHops)
+		return fail(ExitRefused, "thread %s has reached max_hops (%d); if it still matters start a new one: wormhole ask ^%s \"...\"", threadID, cfg.Limits.MaxHops, t.Peer)
 	}
 	e := envelope.NewFollowUp(typ, prev, a.me(cfg), t.Peer, body, a.Now())
 	e.SkillV = skillV

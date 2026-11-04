@@ -13,7 +13,7 @@ import (
 
 // ErrNothingStaged is returned by Decline when the thread has no message
 // waiting in the inbox: it was already opened, declined or never staged.
-var ErrNothingStaged = errors.New("nothing is waiting on this thread")
+var ErrNothingStaged = errors.New("nothing is waiting on this thread; see what is: wormhole inbox")
 
 // Decline tells the peer that the person read the staged message and passed
 // on it, and closes the thread on this machine. The receipt reuses the ack

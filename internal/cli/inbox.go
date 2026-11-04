@@ -154,7 +154,7 @@ func (a *App) newDeclineCommand(c *common) *cobra.Command {
 				return err
 			}
 			if !ok {
-				return fail(ExitRefused, notDeclinedMessage)
+				return fail(ExitRefused, notDeclinedMessage+"; when ready: wormhole decline %s", t.ID)
 			}
 		}
 		res, err := a.declineThread(cmd.Context(), cfg, store, t, reason)
