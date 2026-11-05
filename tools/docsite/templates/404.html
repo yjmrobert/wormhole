@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="{{.Base}}assets/fonts.css">
 <link rel="stylesheet" href="{{.Base}}assets/style.css">
 <script>
-(function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+(function(){try{var t=localStorage.getItem("wh-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}if(localStorage.getItem("wh-wormhole")==="off"){document.documentElement.setAttribute("data-wormhole","off");}}catch(e){}})();
 </script>
 </head>
 <body class="notfound">

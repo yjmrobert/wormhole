@@ -17,7 +17,7 @@
       "violet": "oklch(56% 0.25 300)",
       "pink": "oklch(78% 0.2 350)",
       "star": "oklch(96% 0.01 300)",
-      "glass": "oklch(13% 0.05 287 / 0.6)",
+      "glass": "oklch(13% 0.05 287 / 0.66)",
       "glass-2": "oklch(15% 0.05 288 / 0.74)",
       "glass-3": "oklch(22% 0.06 290 / 0.6)",
       "glass-edge": "oklch(96% 0.01 300 / 0.13)",
@@ -99,7 +99,9 @@
       "script": "tools/docsite/assets/wormhole.js",
       "scale": "0.6 to 0.7 of device pixels, stepping down when a frame averages over 24ms",
       "reducedMotion": "one still frame",
-      "noWebGL": "canvas removed, star field shown"
+      "noWebGL": "canvas removed, star field shown",
+      "calm": "0 with the hero in view, 1 on reading pages: half speed, thinner layers, deeper vignette",
+      "switch": "masthead button sets data-wormhole=off on the root, remembered in localStorage as wh-wormhole"
     }
   },
   "glass": {

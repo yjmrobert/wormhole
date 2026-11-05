@@ -33,7 +33,7 @@
   --code-n: oklch(84% 0.14 150);
   --code-f: oklch(82% 0.12 300);
   --shadow: 0 24px 60px -30px oklch(0% 0 0 / 0.9);
-  --glass: oklch(13% 0.05 287 / 0.6);
+  --glass: oklch(13% 0.05 287 / 0.66);
   --glass-2: oklch(15% 0.05 288 / 0.74);
   --glass-3: oklch(22% 0.06 290 / 0.6);
   --glass-edge: oklch(96% 0.01 300 / 0.13);
@@ -167,6 +167,9 @@ body { margin: 0; min-height: 100vh; position: relative; overflow-x: clip; backg
 .theme:hover { border-color: var(--cyan); background: var(--cyan-soft); }
 .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .theme .sun { display: none; } .theme .moon { display: block; }
+.motion[aria-pressed="true"] { border-color: color-mix(in oklch, var(--cyan) 55%, transparent); color: var(--cyan-text); }
+.motion[aria-pressed="false"] .icon { opacity: 0.55; }
+[data-wormhole="off"] .wormhole { display: none; }
 [data-theme="light"] .theme .sun { display: block; } [data-theme="light"] .theme .moon { display: none; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .theme .sun { display: block; } :root:not([data-theme="dark"]) .theme .moon { display: none; } }
 
@@ -406,6 +409,7 @@ body { margin: 0; min-height: 100vh; position: relative; overflow-x: clip; backg
 }
 @media (max-width: 480px) {
   .masthead { padding: 0 12px; }
+  .masthead-links .rev { display: none; }
   .column { padding: 22px 14px 24px; }
   .wordmark span { display: none; }
   .title-block tr { display: grid; grid-template-columns: auto 1fr; }

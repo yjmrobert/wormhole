@@ -6,9 +6,13 @@
 // is the wireframe grid of that night, magenta lines running toward the
 // reader and cyan lines across, sagging into the well under the throat.
 // The canvas renders below device resolution; the frosted panes above hide
-// the difference and keep the frame cheap. It stops when the tab is hidden,
-// draws one still frame under prefers-reduced-motion, and removes itself
-// (leaving the SVG star field) when WebGL is unavailable.
+// the difference and keep the frame cheap. A "calm" level, full on reading
+// pages and rising on the home page as the hero scrolls away, slows it and
+// thins its layers so the column stays quiet. It stops when the tab is
+// hidden, draws one still frame under prefers-reduced-motion, obeys the
+// masthead switch (data-wormhole="off" on <html>, remembered like the
+// theme), and removes itself (leaving the SVG star field) when WebGL is
+// unavailable.
 (function () {
   "use strict";
 
@@ -16,7 +20,8 @@
   if (!canvas) return;
   var gl = canvas.getContext("webgl", { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: "low-power", preserveDrawingBuffer: false })
     || canvas.getContext("experimental-webgl", { alpha: false, antialias: false, depth: false, stencil: false });
-  if (!gl) { canvas.remove(); return; }
+  function noWebGL() { canvas.remove(); var b = document.querySelector("[data-wormhole-toggle]"); if (b) b.hidden = true; }
+  if (!gl) { noWebGL(); return; }
 
   var vert = [
     "attribute vec2 p;",
@@ -32,6 +37,7 @@
     "uniform float u_light;",
     "uniform float u_oct;",
     "uniform float u_scan;",
+    "uniform float u_calm;",
     "#define TAU 6.28318530718",
     "",
     "float hash1(vec3 p){ p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }",
@@ -58,7 +64,8 @@
     "",
     "  vec2 uv0 = uv;",
     "  // the camera rolls slowly as it falls in",
-    "  float roll = t * 0.045 + 0.18 * sin(t * 0.11);",
+    "  float calm = u_calm;",
+    "  float roll = t * 0.03 + 0.14 * sin(t * 0.09);",
     "  float cs = cos(roll), sn = sin(roll);",
     "  uv = mat2(cs, -sn, sn, cs) * uv;",
     "  float r = length(uv);",
@@ -74,11 +81,11 @@
     "  float fog = exp(-zw * 0.11);",
     "",
     "  // walls: smoke, two families of filaments, rings rushing out",
-    "  vec3 cyl = vec3(cos(aw) * 2.0, sin(aw) * 2.0, zw * 0.5 - t * 0.85);",
+    "  vec3 cyl = vec3(cos(aw) * 2.0, sin(aw) * 2.0, zw * 0.5 - t * 0.65);",
     "  float wall = fbm(cyl * 1.2);",
     "  float fil1 = pow(ridge(fbm(cyl * vec3(2.2, 2.2, 0.9) + 7.0)), 9.0);",
     "  float fil2 = pow(ridge(noise(cyl * vec3(4.0, 4.0, 1.4) + 3.0)), 14.0);",
-    "  float phase = zw * 2.4 - t * 2.6;",
+    "  float phase = zw * 2.4 - t * 1.8;",
     "  float rings = smoothstep(0.94, 1.0, sin(phase)) * smoothstep(0.35, 0.8, noise(vec3(cos(aw) * 3.0, sin(aw) * 3.0, floor(phase / TAU))));",
     "  float dust = pow(noise(vec3(uw * 16.0, t * 0.6)), 9.0);",
     "",
@@ -98,14 +105,14 @@
     "  float cut = smoothstep(0.18, 0.26, sin(sun.y * 120.0) + sy * 1.7 - 0.25);",
     "  float sunMask = smoothstep(sr, sr - 0.006, sd) * cut;",
     "  vec3 sunCol = mix(mix(vec3(0.55, 0.2, 0.9), vec3(1.0, 0.3, 0.62), smoothstep(0.0, 0.45, sy)), vec3(1.0, 0.86, 0.5), smoothstep(0.5, 1.0, sy));",
-    "  ADD(sunMask * 0.8 * (1.0 - 0.65 * smoothstep(0.25, 0.6, wall)), sunCol, 0.9)",
+    "  ADD(sunMask * 0.8 * (1.0 - 0.65 * smoothstep(0.25, 0.6, wall)) * (1.0 - 0.25 * calm), sunCol, 0.9)",
     "  ADD(smoothstep(sr + 0.16, sr - 0.02, sd) * 0.22, mix(magenta, vec3(1.0, 0.6, 0.4), 0.4), 0.8)",
     "",
-    "  ADD(wall * wall * 0.95 * fog, violet, 0.4)",
-    "  ADD(fil1 * 1.1 * fog, magenta, 1.0)",
-    "  ADD(fil2 * 1.6 * fog, cyan, 1.0)",
-    "  ADD(rings * 0.85 * fog, mix(cyan, magenta, 0.5 + 0.5 * sin(zw * 0.7 + t)), 1.0)",
-    "  ADD(dust * 0.9 * fog, mix(cyan, vec3(1.0), 0.4), 0.8)",
+    "  ADD(wall * wall * 0.95 * fog * (1.0 - 0.45 * calm), violet, 0.3)",
+    "  ADD(fil1 * 1.1 * fog * (1.0 - 0.5 * calm), magenta, 1.0)",
+    "  ADD(fil2 * 1.6 * fog * (1.0 - 0.5 * calm), cyan, 1.0)",
+    "  ADD(rings * 0.65 * fog * (1.0 - 0.6 * calm), mix(cyan, magenta, 0.5 + 0.5 * sin(zw * 0.7 + t)), 1.0)",
+    "  ADD(dust * 0.45 * fog * (1.0 - calm), mix(cyan, vec3(1.0), 0.4), 0.8)",
     "",
     "  // the wireframe floor below the horizon, sagging into the well",
     "  float below = hy - uv0.y;",
@@ -122,8 +129,8 @@
     "    float lineZ = smoothstep(wz * 1.6, wz * 0.4, abs(fract(gz) - 0.5));",
     "    float fade = onFloor * exp(-depth * 0.22);",
     "    col *= mix(1.0, 0.6, onFloor);",
-    "    ADD(lineX * fade * 0.95, magenta, 1.0)",
-    "    ADD(lineZ * fade * 0.55, cyan, 1.0)",
+    "    ADD(lineX * fade * 0.95 * (1.0 - 0.4 * calm), magenta, 1.0)",
+    "    ADD(lineZ * fade * 0.55 * (1.0 - 0.4 * calm), cyan, 1.0)",
     "    ADD(0.18 * exp(-below * 16.0) * smoothstep(1.2, 0.3, abs(uv0.x)), magenta, 1.0)",
     "  }",
     "",
@@ -135,7 +142,7 @@
     "  float fa = fract(along);",
     "  float angd = abs(fract((a / TAU + 0.5) * cells) - 0.5);",
     "  float streak = smoothstep(0.0, 0.08, fa) * smoothstep(0.55, 0.08, fa) * smoothstep(0.09, 0.0, angd) * step(0.72, hs);",
-    "  ADD(streak * 0.5 * smoothstep(0.1, 0.45, r), mix(cyan, vec3(1.0), 0.5), 1.0)",
+    "  ADD(streak * 0.35 * smoothstep(0.1, 0.45, r) * (1.0 - 0.75 * calm), mix(cyan, vec3(1.0), 0.5), 1.0)",
     "",
     "  // the far side, seen through the throat with its stars pulled in",
     "  vec2 su = uv * (1.0 + 0.4 / (r + 0.12)) + vec2(t * 0.015, -t * 0.01);",
@@ -148,17 +155,18 @@
     "  // the throat",
     "  float pulse = 0.85 + 0.15 * sin(t * 1.7);",
     "  float glow = 0.016 / (r * r + 0.004) * pulse;",
-    "  ADD(glow * 0.34, mix(magenta, cyan, smoothstep(0.0, 0.32, r)), 0.8)",
+    "  ADD(glow * 0.34 * (1.0 - 0.3 * calm), mix(magenta, cyan, smoothstep(0.0, 0.32, r)), 0.8)",
     "  ADD(smoothstep(0.05, 0.0, r) * 0.8 * pulse, vec3(1.0, 0.96, 1.0), 0.0)",
     "  // a thin cyan event horizon ring",
     "  float horizon = smoothstep(0.012, 0.0, abs(r - 0.16 - 0.01 * sin(t * 1.3)));",
-    "  ADD(horizon * 0.55, cyan, 1.0)",
+    "  ADD(horizon * 0.55 * (1.0 - 0.3 * calm), cyan, 1.0)",
     "",
     "  // vignette, tone, grain",
     "  vec2 vg = (frag - 0.5) * vec2(aspect, 1.0);",
-    "  float vig = 1.0 - 0.6 * smoothstep(0.4, 1.2, length(vg));",
+    "  float vig = 1.0 - mix(0.6, 0.75, calm) * smoothstep(0.4, 1.2, length(vg));",
     "  col *= vig; ink *= vig;",
-    "  col *= 1.0 - 0.07 * (0.5 + 0.5 * sin(gl_FragCoord.y * TAU / u_scan)) * (1.0 - u_light);",
+    "  col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.2 * calm);",
+    "  col *= 1.0 - 0.04 * (0.5 + 0.5 * sin(gl_FragCoord.y * TAU / u_scan)) * (1.0 - u_light);",
     "  col = 1.0 - exp(-col * 1.25);",
     "",
     "  // light theme: the same scene printed in ink on paper",
@@ -179,10 +187,10 @@
   }
   var vs = compile(gl.VERTEX_SHADER, vert);
   var fs = compile(gl.FRAGMENT_SHADER, frag);
-  if (!vs || !fs) { canvas.remove(); return; }
+  if (!vs || !fs) { noWebGL(); return; }
   var prog = gl.createProgram();
   gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { canvas.remove(); return; }
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { noWebGL(); return; }
   gl.useProgram(prog);
   var buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -191,9 +199,8 @@
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   var U = {};
-  ["u_res", "u_time", "u_center", "u_drift", "u_light", "u_oct", "u_scan"].forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
+  ["u_res", "u_time", "u_center", "u_drift", "u_light", "u_oct", "u_scan", "u_calm"].forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
 
-  document.documentElement.classList.add("has-wormhole");
 
   // Resolution and quality. Start below device pixels; step down if frames run long.
   var scale = window.innerWidth > 1400 ? 0.6 : 0.7;
@@ -219,13 +226,25 @@
   }
   var light = wantLight();
   var lightTarget = light;
-  new MutationObserver(function () { lightTarget = wantLight(); wake(); }).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  function wantOn() { return root.getAttribute("data-wormhole") !== "off"; }
+  function applySwitch() {
+    if (wantOn()) { root.classList.add("has-wormhole"); wake(); }
+    else { if (raf) cancelAnimationFrame(raf); raf = 0; root.classList.remove("has-wormhole"); canvas.classList.remove("live"); }
+  }
+  new MutationObserver(function (muts) {
+    lightTarget = wantLight();
+    for (var i = 0; i < muts.length; i++) { if (muts[i].attributeName === "data-wormhole") { applySwitch(); return; } }
+    wake();
+  }).observe(root, { attributes: true, attributeFilter: ["data-theme", "data-wormhole"] });
   if (lightMQ.addEventListener) lightMQ.addEventListener("change", function () { lightTarget = wantLight(); wake(); });
 
   // Where the throat sits. On the home page it is the hero window and follows
   // it as the page scrolls; elsewhere it keeps to the right, away from the column.
   var hero = document.querySelector(".hero");
   var cx = 0.5, cy = 0.5;
+  // Calm: 0 with the hero window fully in view, 1 on reading pages and once
+  // the hero has scrolled away. It slows the fall and thins the layers.
+  var calm = hero ? 0 : 1, calmTarget = calm;
   function placeThroat() {
     var vw = window.innerWidth, vh = window.innerHeight;
     if (hero) {
@@ -233,6 +252,8 @@
       cx = (rc.left + rc.width * 0.5) / vw;
       cy = 1 - (rc.top + rc.height * 0.52) / vh;
       cy = Math.max(-0.12, Math.min(1.12, cy));
+      var seen = (Math.min(rc.bottom, vh) - Math.max(rc.top, 0)) / rc.height;
+      calmTarget = 1 - Math.max(0, Math.min(1, seen * 1.15));
     } else {
       cx = vw > 840 ? 0.8 : 0.58;
       cy = Math.min(0.92, 0.5 + (window.scrollY / vh) * 0.12);
@@ -251,7 +272,7 @@
   }
 
   var reduceMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var start = performance.now();
+  var simT = 0, prevNow = 0;
   var raf = 0, still = false, lastFrame = 0, acc = 0, n = 0;
 
   function draw(now) {
@@ -260,7 +281,11 @@
     light += (lightTarget - light) * 0.08;
     if (Math.abs(lightTarget - light) < 0.002) light = lightTarget;
     dx += (mx - dx) * 0.06; dy += (my - dy) * 0.06;
-    var t = reduceMQ.matches ? 11.0 : (((now - start) / 1000) % 14400);
+    calm += (calmTarget - calm) * 0.08;
+    if (Math.abs(calmTarget - calm) < 0.002) calm = calmTarget;
+    if (prevNow && !reduceMQ.matches) simT = (simT + Math.min(now - prevNow, 50) / 1000 * (1 - 0.5 * calm)) % 14400;
+    prevNow = now;
+    var t = reduceMQ.matches ? 11.0 : simT;
     gl.uniform2f(U.u_res, w, h);
     gl.uniform1f(U.u_time, t);
     gl.uniform2f(U.u_center, cx, cy);
@@ -268,6 +293,7 @@
     gl.uniform1f(U.u_light, light);
     gl.uniform1f(U.u_oct, octaves);
     gl.uniform1f(U.u_scan, Math.max(2.0, 3.0 * (h / window.innerHeight)));
+    gl.uniform1f(U.u_calm, calm);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     canvas.classList.add("live");
   }
@@ -286,20 +312,20 @@
     lastFrame = now;
     if (reduceMQ.matches) {
       // One still frame, then settle any theme fade and stop.
-      if (light !== lightTarget || Math.abs(dx - mx) > 0.0005) raf = requestAnimationFrame(loop);
+      if (light !== lightTarget || calm !== calmTarget || Math.abs(dx - mx) > 0.0005) raf = requestAnimationFrame(loop);
       else still = true;
       return;
     }
     raf = requestAnimationFrame(loop);
   }
-  function wake() { if (!raf && !document.hidden) { lastFrame = 0; still = false; raf = requestAnimationFrame(loop); } }
+  function wake() { if (!raf && !document.hidden && wantOn()) { lastFrame = 0; prevNow = 0; still = false; raf = requestAnimationFrame(loop); } }
 
   window.addEventListener("resize", function () { w = 0; wake(); }, { passive: true });
   window.addEventListener("scroll", function () { if (reduceMQ.matches) wake(); }, { passive: true });
   document.addEventListener("visibilitychange", function () { if (!document.hidden) wake(); });
-  if (reduceMQ.addEventListener) reduceMQ.addEventListener("change", function () { start = performance.now(); wake(); });
+  if (reduceMQ.addEventListener) reduceMQ.addEventListener("change", function () { wake(); });
   canvas.addEventListener("webglcontextlost", function (e) { e.preventDefault(); if (raf) cancelAnimationFrame(raf); raf = 0; }, false);
   canvas.addEventListener("webglcontextrestored", function () { w = 0; wake(); }, false);
 
-  wake();
+  applySwitch();
 })();

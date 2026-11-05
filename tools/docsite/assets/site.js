@@ -1,5 +1,5 @@
-// Wormhole docs: theme switch, search over the generated index, in-page
-// contents tracking, copy buttons on code. No dependencies, no requests
+// Wormhole docs: theme switch, wormhole switch, search over the generated
+// index, in-page contents tracking, copy buttons on code. No dependencies, no requests
 // beyond the site's own files.
 (function () {
   "use strict";
@@ -25,6 +25,25 @@
       labelToggle();
     });
     labelToggle();
+  }
+
+  // The wormhole switch: remembered like the theme; wormhole.js watches the attribute.
+  var motion = document.querySelector("[data-wormhole-toggle]");
+  function wormholeOn() { return root.getAttribute("data-wormhole") !== "off"; }
+  function labelMotion() {
+    if (!motion) return;
+    var on = wormholeOn();
+    motion.setAttribute("aria-pressed", on ? "true" : "false");
+    motion.setAttribute("aria-label", on ? "Turn the wormhole off" : "Turn the wormhole on");
+  }
+  if (motion) {
+    motion.addEventListener("click", function () {
+      var on = !wormholeOn();
+      if (on) root.removeAttribute("data-wormhole"); else root.setAttribute("data-wormhole", "off");
+      try { localStorage.setItem("wh-wormhole", on ? "on" : "off"); } catch (e) {}
+      labelMotion();
+    });
+    labelMotion();
   }
 
   // Search.
