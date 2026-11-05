@@ -56,7 +56,7 @@ func (a *App) guardBody(body string, forceUnsafe bool) error {
 		return fail(ExitUsage, "empty body")
 	}
 	if len(body) > envelope.MaxBodyBytes {
-		return fail(ExitRefused, "body is %d bytes; the cap is %d", len(body), envelope.MaxBodyBytes)
+		return fail(ExitRefused, "body is %d bytes; the cap is %d: shorten it, or send a link to the material", len(body), envelope.MaxBodyBytes)
 	}
 	if hits := envelope.ScanSecrets(body); len(hits) > 0 {
 		if !forceUnsafe {
@@ -86,7 +86,7 @@ func (a *App) review(c *common, e envelope.Envelope, yes bool) (bool, error) {
 		return false, err
 	}
 	if !ok {
-		return false, fail(ExitRefused, "not sent")
+		return false, fail(ExitRefused, "not sent; rerun when ready, with --yes to skip the prompt")
 	}
 	return true, nil
 }
@@ -119,7 +119,7 @@ func (a *App) publish(ctx context.Context, c *common, cfg *config.Config, store 
 		if errors.Is(err, bus.ErrPermission) {
 			return fail(ExitRefused, "%v", err)
 		}
-		return fail(ExitUnavailable, "publish: %v", err)
+		return fail(ExitUnavailable, "publish: %v; check the bus with: wormhole doctor", err)
 	}
 	if err := store.Put(ctx, t); err != nil {
 		return err
@@ -192,10 +192,7 @@ func (a *App) newAskCommand(c *common) *cobra.Command {
 }
 
 // followUp is shared by reply and send.
-func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, threadID, peer, text string, yes, force bool, skillV string) error {
-	if !envelope.ValidID(threadID) {
-		return fail(ExitNotFound, invalidThreadIDFormat, threadID)
-	}
+func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, threadRef, peer, text string, yes, force bool, skillV string) error {
 	cfg, err := a.loadConfig(c)
 	if err != nil {
 		return err
@@ -212,16 +209,17 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 		return err
 	}
 	defer store.Close()
-	t, err := store.Get(ctx, threadID)
+	t, err := a.resolveThread(ctx, store, threadRef)
 	if err != nil {
-		return fail(ExitNotFound, threadNotFoundFormat, threadID)
+		return err
 	}
+	threadID := t.ID
 	if peer != "" && peer != t.Peer {
-		return fail(ExitNotFound, "thread %s is with ^%s, not ^%s", threadID, t.Peer, peer)
+		return fail(ExitNotFound, "thread %s is with ^%s, not ^%s; send to them: wormhole send %s --thread %s \"...\"", threadID, t.Peer, peer, t.Peer, threadID)
 	}
 	switch t.State {
 	case threads.StateClosed, threads.StateExpired, threads.StateRejected, threads.StateDeclined:
-		return fail(ExitRefused, "thread %s is %s", threadID, t.State)
+		return fail(ExitRefused, "thread %s is %s; start a new one: wormhole ask ^%s \"...\"", threadID, t.State, t.Peer)
 	}
 	last, err := store.LastMessage(ctx, threadID)
 	if err != nil {
@@ -232,7 +230,7 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 		return err
 	}
 	if prev.Hop+1 > cfg.Limits.MaxHops {
-		return fail(ExitRefused, "thread %s has reached max_hops (%d); start a new ask if it still matters", threadID, cfg.Limits.MaxHops)
+		return fail(ExitRefused, "thread %s has reached max_hops (%d); if it still matters start a new one: wormhole ask ^%s \"...\"", threadID, cfg.Limits.MaxHops, t.Peer)
 	}
 	e := envelope.NewFollowUp(typ, prev, a.me(cfg), t.Peer, body, a.Now())
 	e.SkillV = skillV
@@ -252,11 +250,11 @@ func (a *App) followUp(ctx context.Context, c *common, typ envelope.Type, thread
 func (a *App) newReplyCommand(c *common) *cobra.Command {
 	var yes, force bool
 	var skillV string
-	cmd := command("reply <thread_id> <text>", "Reply on a thread")
+	cmd := command("reply <thread> <text>", "Reply on a thread")
 	cmd.Flags().BoolVar(&yes, "yes", false, yesHelp)
 	cmd.Flags().BoolVar(&force, "force-unsafe", false, forceUnsafeHelp)
 	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, skillVersionHelp)
-	cmd.Args = exactArgs(2, `wormhole reply <thread_id> "<text>"`)
+	cmd.Args = exactArgs(2, `wormhole reply <thread> "<text>"`)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return a.followUp(cmd.Context(), c, envelope.TypeReply, args[0], "", args[1], yes, force, skillV)
 	}
@@ -268,14 +266,14 @@ func (a *App) newSendCommand(c *common) *cobra.Command {
 	var thread, skillV string
 	var yes, force bool
 	cmd := command("send <user> <text>", "Send a follow-up on an open thread")
-	cmd.Flags().StringVar(&thread, "thread", "", "open thread to send on")
+	cmd.Flags().StringVar(&thread, "thread", "", "open thread to send on: "+threadHelp)
 	cmd.Flags().BoolVar(&yes, "yes", false, yesHelp)
 	cmd.Flags().BoolVar(&force, "force-unsafe", false, forceUnsafeHelp)
 	cmd.Flags().StringVar(&skillV, "skill-version", SkillVersion, skillVersionHelp)
-	cmd.Args = exactArgs(2, `wormhole send <user> --thread <id> "<text>"`)
+	cmd.Args = exactArgs(2, `wormhole send <user> --thread <thread> "<text>"`)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if thread == "" {
-			return fail(ExitUsage, `usage: wormhole send <user> --thread <id> "<text>"`)
+			return fail(ExitUsage, `usage: wormhole send <user> --thread <thread> "<text>"`)
 		}
 		return a.followUp(cmd.Context(), c, envelope.TypeMessage, thread, args[0], args[1], yes, force, skillV)
 	}

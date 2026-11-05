@@ -11,8 +11,21 @@ a thread is an open wormhole; `wormhole ask` opens one and `wormhole reply`
 travels back through it.
 
 Wormhole is an independent open-source project under Apache-2.0. Every
-team runs its own bus from the shipped templates; nothing is hosted and there
-is no telemetry. Explicitly enabled update checks contact GitHub Releases only.
+team runs its own bus, embedded in the binary or from the shipped
+templates; nothing is hosted and there is no telemetry. Explicitly enabled
+update checks contact GitHub Releases only.
+
+## Five minutes to the first ask
+
+```
+wormhole serve install --invite bob     # alice: the bus, this machine joined, bob's invite
+wormhole join wh1...                    # bob: config, credential, skill, daemon
+wormhole ask ^bob "is the retry policy in PR #123 sane?"
+```
+
+`wormhole demo` shows the round trip on one machine first, with no server
+and no second person. [Install and configure](install.md) has the details
+and the VM path for teams that run their own `nats-server`.
 
 ## Status
 

@@ -38,10 +38,10 @@ type OpenResult struct {
 
 // Errors from OpenStaged and ParseSnooze. Callers compare with errors.Is.
 var (
-	ErrNoAgentProfile = errors.New("copilot.safe_tools is empty; running a message under the agent profile needs the auto-mode profile (see docs/design.md, M0 results)")
-	ErrNothingToOpen  = errors.New("no local session and nothing staged")
+	ErrNoAgentProfile = errors.New("copilot.safe_tools is empty; the agent profile needs it: set copilot.safe_tools and copilot.extra_args in config.yaml (the tested profile is in docs/design.md, M0 results), or open the message with your own tools: wormhole open <thread>")
+	ErrNothingToOpen  = errors.New("no local session and nothing staged; see: wormhole threads")
 	ErrStartSession   = errors.New("start session")
-	ErrBadDuration    = errors.New("not a duration (try 2h, 45m, 1d, or off)")
+	ErrBadDuration    = errors.New("not a duration; use 2h, 45m, 1d, or off")
 )
 
 // CheckAgentProfile refuses the agent profile when no auto-mode profile is

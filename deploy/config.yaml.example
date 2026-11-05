@@ -1,21 +1,30 @@
 # Wormhole configuration. Keep this file private: chmod 600.
-# Placeholders: replace alice/bob and bus.example.internal with your own.
+# `wormhole join <invite>` and `wormhole init` write this file; `wormhole
+# senders add|remove` edit it. Every key is documented here so that a
+# hand-written copy has the same defaults. Placeholders: replace alice/bob
+# and bus.example.internal with your own.
 
 # Your handle. Must equal the bus user your credentials authenticate as.
 handle: alice
 
 bus:
   kind: nats
+  # One address, or several separated by commas (join writes every
+  # address the server advertises).
   url: tls://bus.example.internal:4222
   # v0 static users: a file holding only the password, mode 600, outside any git tree.
   password_file: ~/.config/wormhole/password
   # M4 JWT auth: a NATS .creds file instead of password_file.
   # creds: ~/.config/wormhole/alice.creds
+  # The CA to trust for the bus. join writes the one a `wormhole serve`
+  # bus generated; a bus with a public certificate leaves it unset.
   # tls_ca: ~/.config/wormhole/bus-ca.pem
 
 # Who may open a wormhole to you. A bare handle means inbox mode: a person
 # reads the message before any tool runs. auto mode runs the kickoff
 # headless with the read-only tool set below; opt in per sender.
+# `wormhole senders add carol [--auto]` and `wormhole senders remove carol`
+# edit this list; join adds the person who invited you, in inbox mode.
 senders:
   - bob
   # - {handle: carol, mode: auto}

@@ -1,4 +1,6 @@
-# User unit for wormholed. Install with:
+# User unit for wormholed. `wormhole service install` (and `wormhole join`)
+# generate this unit from the binary's own path and run the steps below;
+# this copy is for a machine set up by hand:
 #   mkdir -p ~/.config/systemd/user
 #   cp deploy/systemd/wormhole.service ~/.config/systemd/user/
 #   systemctl --user import-environment DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS

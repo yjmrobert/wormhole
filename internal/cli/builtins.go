@@ -94,7 +94,7 @@ func (a *App) newCommandsCommand(c *common) *cobra.Command {
 				}
 			}
 			if next == nil {
-				return fail(ExitNotFound, "command path %q not found", strings.Join(args, " "))
+				return fail(ExitNotFound, "command path %q not found; list them with: wormhole commands", strings.Join(args, " "))
 			}
 			selected = next
 		}

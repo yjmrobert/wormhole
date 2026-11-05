@@ -23,6 +23,7 @@ import (
 	natsbus "github.com/yjmrobert/wormhole/internal/bus/nats"
 	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/ghapp"
+	"github.com/yjmrobert/wormhole/internal/systemd"
 	"github.com/yjmrobert/wormhole/internal/threads"
 )
 
@@ -40,9 +41,9 @@ const (
 	unknownMetadata       = "unknown"
 	utcTimestampLayout    = "2006-01-02T15:04:05Z"
 	invalidThreadIDFormat = "%q is not a thread id"
-	invalidHandleFormat   = "%q is not a valid handle"
-	threadNotFoundFormat  = "thread %s is not on this machine"
-	busErrorFormat        = "bus: %v"
+	invalidHandleFormat   = "%q is not a handle (lower-case letters, digits, - and _); see who is on the bus: wormhole users"
+	threadNotFoundFormat  = "thread %s is not on this machine; list yours with: wormhole threads"
+	busErrorFormat        = "bus: %v; check bus.url and the credential with: wormhole doctor"
 	noInputReviewMessage  = "--no-input forbids confirmation prompts; review the message and rerun with --yes"
 	notStartedMessage     = "not started; it stays in the inbox"
 	notDeclinedMessage    = "not declined; it stays in the inbox"
@@ -65,6 +66,12 @@ type App struct {
 	OpenStore  func() (*threads.Store, error)
 	NewUpdater func() (releaseUpdater, error)
 	Reexec     func() error
+	// LookPath finds binaries on PATH (agent detection); nil means exec.LookPath.
+	LookPath func(string) (string, error)
+	// Systemctl runs systemctl for the service commands; nil means the real one.
+	Systemctl systemd.Runner
+	// Executable is this binary's path for generated units; nil means os.Executable.
+	Executable func() (string, error)
 	Now        func() time.Time
 	Hostname   string
 	Version    string
@@ -99,10 +106,13 @@ func Default() *App {
 	}
 }
 
-// exitError carries an exit code with an error.
+// exitError carries an exit code with an error. silent means the command
+// already reported the failure in its own output (doctor's JSON), so Run
+// does not add an error object after it.
 type exitError struct {
-	code int
-	err  error
+	code   int
+	err    error
+	silent bool
 }
 
 // Error returns the underlying command error message.
@@ -144,7 +154,7 @@ func (a *App) loadConfig(c *common) (*config.Config, error) {
 	cfg, err := config.Load(path)
 	if err != nil {
 		if os.IsNotExist(errors.Unwrap(err)) || errors.Is(err, os.ErrNotExist) {
-			return nil, fail(ExitError, "no config at %s; run: wormhole init", path)
+			return nil, fail(ExitError, "no config at %s; join a bus with: wormhole join <invite>, or set up by hand with: wormhole init", path)
 		}
 		return nil, wrap(ExitError, err)
 	}
@@ -231,6 +241,12 @@ func (a *App) newRootCommand() (*cobra.Command, *common) {
 		a.newVersionCommand(c),
 		a.newUpdateCommand(c),
 		a.newManCommand(),
+		a.newSendersCommand(c),
+		a.newSkillCommand(c),
+		a.newServiceCommand(c),
+		a.newServeCommand(c),
+		a.newJoinCommand(c),
+		a.newDemoCommand(c),
 	)
 	a.registerCompletions(root, c)
 	return root, c
@@ -308,7 +324,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	} else if strings.HasPrefix(err.Error(), "unknown command") {
 		code = ExitUsage
 	}
-	if jsonOut {
+	if jsonOut && !(ee != nil && ee.silent) {
 		_ = json.NewEncoder(a.Stdout).Encode(map[string]any{"ok": false, "error": err.Error(), "code": code})
 	}
 	return code

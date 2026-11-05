@@ -147,7 +147,7 @@ func TestDeclineTellsThePeerAndClosesTheThread(t *testing.T) {
 	msg := envelope.NewFollowUp(envelope.TypeMessage, ask, envelope.Peer{User: "alice"}, "bob", "please?", time.Now())
 	f.deliver(msg, "alice")
 	acks = f.waitAck(t, 3)
-	if reason, ok := acks[2].Env.Rejected(); !ok || reason != "thread declined" {
+	if reason, ok := acks[2].Env.Rejected(); !ok || !strings.HasPrefix(reason, "thread declined") {
 		t.Fatalf("follow-up on declined thread: %+v", acks[2].Env)
 	}
 	// Nothing ran in the app.

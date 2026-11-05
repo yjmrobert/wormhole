@@ -234,7 +234,7 @@ func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
 	// Identity: the subject's sender token is what the server authenticated.
 	if e.From.User != dl.Sender {
 		log.Warn("dropping message whose from.user does not match the authenticated sender", "claimed", e.From.User)
-		d.reject(ctx, dl, "sender mismatch")
+		d.reject(ctx, dl, "sender mismatch: the envelope claims a sender the bus did not authenticate; update wormhole on both machines")
 		return
 	}
 	if e.To.User != d.cfg.Handle {
@@ -267,7 +267,7 @@ func (d *Daemon) Handle(ctx context.Context, dl bus.Delivery) {
 	case envelope.TypeReply, envelope.TypeMessage:
 		d.handleFollowUp(ctx, dl)
 	default:
-		d.reject(ctx, dl, "unknown type")
+		d.reject(ctx, dl, "unknown envelope type; update wormhole on both machines")
 	}
 }
 
@@ -275,6 +275,12 @@ func (d *Daemon) ack(ctx context.Context, dl bus.Delivery) {
 	if err := d.bus.Ack(ctx, dl.ID); err != nil {
 		d.log.Warn("ack failed", "msg", dl.Env.ID, "err", err)
 	}
+}
+
+// notAllowed is the rejection reason for a sender who is not in the
+// allowlist. The asker sees it, so it names what the recipient would run.
+func (d *Daemon) notAllowed(sender string) string {
+	return fmt.Sprintf("sender not allowed; ask ^%s to run: wormhole senders add %s", d.cfg.Handle, sender)
 }
 
 // reject acks the bus message so it does not redeliver and tells the sender
@@ -374,7 +380,7 @@ func (d *Daemon) handleAsk(ctx context.Context, dl bus.Delivery) {
 	e := dl.Env
 	mode, allowed := d.cfg.SenderMode(dl.Sender)
 	if !allowed {
-		d.reject(ctx, dl, "sender not allowed")
+		d.reject(ctx, dl, d.notAllowed(dl.Sender))
 		return
 	}
 	if d.paused() {
@@ -411,7 +417,7 @@ func (d *Daemon) handleAsk(ctx context.Context, dl bus.Delivery) {
 	if existing, err := d.store.Get(ctx, e.ThreadID); err == nil {
 		// Thread id reuse: only the original peer may add to it.
 		if existing.Peer != dl.Sender || existing.Direction != threads.DirectionIn {
-			d.reject(ctx, dl, "thread id already in use")
+			d.reject(ctx, dl, "thread id already in use; start a new one: wormhole ask")
 			return
 		}
 		known = true
@@ -467,16 +473,16 @@ func (d *Daemon) handleFollowUp(ctx context.Context, dl bus.Delivery) {
 	t, err := d.store.Get(ctx, e.ThreadID)
 	known := err == nil
 	if known && t.Peer != dl.Sender {
-		d.reject(ctx, dl, "not a party to this thread")
+		d.reject(ctx, dl, "not a party to this thread; start your own: wormhole ask")
 		return
 	}
 	if known && t.State == threads.StateDeclined {
-		d.reject(ctx, dl, "thread declined")
+		d.reject(ctx, dl, "thread declined; if it still matters start a new one: wormhole ask")
 		return
 	}
 	mode, allowed := d.cfg.SenderMode(dl.Sender)
 	if !known && !allowed {
-		d.reject(ctx, dl, "sender not allowed")
+		d.reject(ctx, dl, d.notAllowed(dl.Sender))
 		return
 	}
 	if !allowed {

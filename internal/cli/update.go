@@ -89,7 +89,7 @@ func (a *App) newUpdateCommand(c *common) *cobra.Command {
 			return fail(ExitUsage, "--enable and --disable are exclusive")
 		}
 		if a.NewUpdater == nil {
-			return fail(ExitUnavailable, "self-update is not configured")
+			return fail(ExitUnavailable, "self-update is not available in this build; reinstall the way you installed it")
 		}
 		if enable && selfupdate.IsDevelopmentVersion(a.Version) {
 			return fail(ExitUnavailable, "automatic updates are unavailable for development build %q; use a tagged release", a.Version)

@@ -27,7 +27,7 @@ func (a *App) watch(ctx context.Context, c *common) error {
 	}
 	in, ok := a.Stdin.(*os.File)
 	if !ok || !isTerminal(in) {
-		return fail(ExitRefused, "inbox --watch needs a terminal")
+		return fail(ExitRefused, "inbox --watch needs a terminal; list the inbox instead with: wormhole inbox")
 	}
 	cfg, err := a.loadConfig(c)
 	if err != nil {

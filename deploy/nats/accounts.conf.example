@@ -9,6 +9,9 @@
 #   publish   wh.inbox.*.<self>, wh.ack.*.<self>   send as themselves only
 #             wh.dlq.<self>                        park their own dead letters
 #   subscribe wh.inbox.<self>.>, wh.ack.<self>.>   read only their own traffic
+#             _INBOX.<self>.>                      their own request replies
+#             (the daemon's connection uses that inbox prefix; the shared
+#             _INBOX.> wildcard would expose every member's replies)
 #   plus the JetStream API subjects for their own durable consumer
 #   (wh-<self>) and the WORMHOLE_USERS registry bucket.
 #
@@ -45,7 +48,7 @@ authorization {
           ]
         }
         subscribe: {
-          allow: [ "wh.inbox.alice.>", "wh.ack.alice.>", "wh.dlq.alice", "_INBOX.>" ]
+          allow: [ "wh.inbox.alice.>", "wh.ack.alice.>", "wh.dlq.alice", "_INBOX.alice.>" ]
         }
       }
     }
@@ -73,7 +76,7 @@ authorization {
           ]
         }
         subscribe: {
-          allow: [ "wh.inbox.bob.>", "wh.ack.bob.>", "wh.dlq.bob", "_INBOX.>" ]
+          allow: [ "wh.inbox.bob.>", "wh.ack.bob.>", "wh.dlq.bob", "_INBOX.bob.>" ]
         }
       }
     }

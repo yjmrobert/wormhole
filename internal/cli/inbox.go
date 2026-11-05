@@ -19,16 +19,13 @@ import (
 
 // stagedThread loads the thread a verb acts on and checks that a message is
 // waiting on it.
-func (a *App) stagedThread(ctx context.Context, store *threads.Store, id string) (threads.Thread, error) {
-	if !envelope.ValidID(id) {
-		return threads.Thread{}, fail(ExitNotFound, invalidThreadIDFormat, id)
-	}
-	t, err := store.Get(ctx, id)
+func (a *App) stagedThread(ctx context.Context, store *threads.Store, ref string) (threads.Thread, error) {
+	t, err := a.resolveThread(ctx, store, ref)
 	if err != nil {
-		return threads.Thread{}, fail(ExitNotFound, threadNotFoundFormat, id)
+		return threads.Thread{}, err
 	}
 	if t.StagedKickoff == "" {
-		return threads.Thread{}, fail(ExitRefused, "nothing is waiting on thread %s (state %s)", id, t.State)
+		return threads.Thread{}, fail(ExitRefused, "nothing is waiting on thread %s (state %s); see what is: wormhole inbox", t.ID, t.State)
 	}
 	return t, nil
 }
@@ -50,8 +47,8 @@ type snoozeResult struct {
 
 // snoozeThread hides a staged message for a while. It is local and reversible.
 func (a *App) newSnoozeCommand(c *common) *cobra.Command {
-	cmd := command("snooze <thread_id> [duration|off]", "Hide a staged message until later")
-	cmd.Args = rangeArgs(1, 2, "wormhole snooze <thread_id> [<duration>|off]")
+	cmd := command("snooze <thread> [duration|off]", "Hide a staged message until later")
+	cmd.Args = rangeArgs(1, 2, "wormhole snooze <thread> [<duration>|off]")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cfg, err := a.loadConfig(c)
 		if err != nil {
@@ -116,9 +113,9 @@ type declineResult struct {
 // newDeclineCommand closes a staged message without running it and tells the asker.
 func (a *App) newDeclineCommand(c *common) *cobra.Command {
 	var yes bool
-	cmd := command("decline <thread_id> [reason]", "Decline a staged message and notify the sender")
+	cmd := command("decline <thread> [reason]", "Decline a staged message and notify the sender")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation")
-	cmd.Args = rangeArgs(1, 2, `wormhole decline <thread_id> ["<reason>"]`)
+	cmd.Args = rangeArgs(1, 2, `wormhole decline <thread> ["<reason>"]`)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cfg, err := a.loadConfig(c)
 		if err != nil {
@@ -157,7 +154,7 @@ func (a *App) newDeclineCommand(c *common) *cobra.Command {
 				return err
 			}
 			if !ok {
-				return fail(ExitRefused, notDeclinedMessage)
+				return fail(ExitRefused, notDeclinedMessage+"; when ready: wormhole decline %s", t.ID)
 			}
 		}
 		res, err := a.declineThread(cmd.Context(), cfg, store, t, reason)

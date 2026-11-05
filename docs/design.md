@@ -61,6 +61,9 @@ internal/daemon     dispatch, delivery modes, receipts, retries, rate caps
 internal/bus        Bus and Registry interfaces, subject scheme
 internal/bus/memory in-process adapter for tests and demos
 internal/bus/nats   JetStream adapter (first real bus)
+internal/serve      the embedded NATS server: TLS, users, invites, the join exchange
+internal/agents     which agents are installed and where their skills live
+internal/systemd    generated user units for the daemon and the server
 internal/envelope   schema v1, validation, ULIDs, secret scan
 internal/threads    SQLite thread map and message copies
 internal/config     loading, validation, leak guards
@@ -344,6 +347,102 @@ writes the pause file the daemon already polls. GNOME needs the
 AppIndicator extension to show any such item; that is a desktop fact, not
 something the binary can change.
 
+## Joining a bus
+
+The first five minutes decide whether there is a second person, so the
+path from the download to the first ask is three commands and no file
+edited by hand (the M2 gate in the roadmap). `wormhole serve` is the bus;
+`wormhole join <invite>` is a machine joining it; `wormhole demo` is the
+round trip on one machine with neither.
+
+### `wormhole serve`
+
+The binary embeds `nats-server` with JetStream, started from programmatic
+options: no `nats-server.conf`, no `accounts.conf`. Its state is one
+directory, `~/.local/state/wormhole/serve`, mode 700:
+
+- A self-signed CA (`ca.crt`, `ca.key`, ECDSA P-256, ten years) generated
+  once, and a server certificate it issues at every start whose names
+  cover `localhost`, the hostname, every non-loopback address of the
+  machine and anything `--advertise` adds. The CA is what invites carry
+  and what joined machines trust; the server certificate can change
+  freely.
+- `users.json`: the admin and every user with a bcrypt hash of their
+  password, plus pending invites. `wormhole serve invite`, `users` and
+  `revoke` edit this file from another process; the running server polls
+  its modification time and reloads its user list in place, so no restart
+  and no IPC. The admin password is generated on first run and used only
+  over the server's in-process connection, to create the `WORMHOLE`
+  stream and the `WORMHOLE_USERS` bucket the way `wormhole admin init`
+  does on a VM (same code).
+- The JetStream store.
+
+Every user gets exactly the permissions `deploy/nats/accounts.conf.example`
+documents (`natsbus.UserPermissions`); a test parses that template and
+asserts the two agree, so the embedded server and the VM path cannot
+drift. The daemon cannot tell which one it is talking to.
+
+### The invite
+
+An invite is one token, `wh1.` followed by base64url JSON: a ULID, the
+handle it is for, who minted it, the bus addresses, the CA certificate,
+a one-time secret and an expiry (24 hours by default). It fits in a chat
+message and is the only thing that crosses between machines by hand.
+
+The secret is not the user's bus password. It is the password of a
+temporary NATS user, `join-<id>`, allowed to do one thing: publish a
+request on `$WH.join.<id>` and read the reply on its own inbox prefix.
+Every connection, join users and members alike, uses a per-user inbox
+prefix (`_INBOX.<user>`) and may subscribe only there; the shared
+`_INBOX.>` wildcard would let any member read every other member's
+JetStream deliveries and every join reply. `wormhole join` connects as that user over
+TLS, trusting the CA from the token, and asks for its credential. The
+server's responder checks the invite is known, unexpired and for that
+handle, generates the user's real password, adds the user with the
+permissions above, deletes the join user and the invite, reloads, and
+returns the password once. The invite is spent; a second `join` with it
+fails; a secret read from someone's chat history after that is worth
+nothing. In M8 the responder returns an `nsc`-minted `.creds` body
+instead and `join` writes `bus.creds`; the token and the commands stay as
+they are.
+
+### `wormhole join`
+
+`join` writes the config (handle, every bus address, the CA path, the
+credential path), stores the credential with mode 600 outside any git
+tree, verifies the connection as the daemon would, installs the skill into
+every agent it detects (`internal/agents`, one row per agent so M4's
+drivers add to it), writes and starts the daemon's systemd user unit with
+the display environment imported, and prints the one thing to do next.
+
+The person who minted the invite is added under `senders:` in inbox mode.
+The M2 issue asked for an empty list; an empty list makes the inviter's
+first ask a `rejected: sender not allowed` receipt and costs the invitee a
+fourth command, which the roadmap's second rule (defaults that work)
+forbids. Inbox mode runs nothing until a person reads the message, so the
+seeded entry changes no safety property; `wormhole senders remove` takes
+it out.
+
+`join` is idempotent: run again with a new invite it rotates the
+credential, the addresses and the CA and leaves every other key alone.
+
+### Thread references
+
+Nobody types a ULID. Every command that takes a thread also takes a
+unique prefix of its id, or `^bob` for the newest open thread with bob
+and `^bob/2` for the one before. One resolver in `internal/cli` backs
+them all; an ambiguous prefix is a usage error that lists the candidates.
+`inbox` and `threads` print the short form beside the full id, and shell
+completion offers handles (from the registry when the bus answers, else
+from the thread map), references and ids.
+
+### Errors that name the fix
+
+Every refusal, not-found and unavailable error ends with the command or
+config line that resolves it, and `wormhole doctor` says the same thing
+in one place (`fix` in `--json`). The most common config edit, who may
+ask you, is a command: `wormhole senders add|remove`.
+
 ## Security, cost and safety
 
 Remote prompt injection is the main threat: inbound text drives an agent
@@ -366,12 +465,13 @@ on someone else's machine.
   logged to stderr.
 - 7-day stream retention; no body logging; thread database mode 600.
 - Kill switches: `wormhole daemon --pause`, `systemctl --user stop
-  wormhole`; server side, remove the user from `accounts.conf` and purge
-  their subjects.
+  wormhole`; server side, `wormhole serve revoke <handle>` (or remove the
+  user from `accounts.conf`) and purge their subjects.
 
-Auth in v0 is TLS plus static users in `accounts.conf`. M8 moves to `nsc`
-operator/account/user JWTs so `wormhole login --creds` can install minted
-credentials and revocation is `nsc revoke`.
+Auth is TLS plus static users: generated and bcrypt-hashed by `wormhole
+serve`, or written in `accounts.conf` on a bus you run yourself. M8 moves
+to `nsc` operator/account/user JWTs so `join` installs minted credentials
+and revocation is `nsc revoke`.
 
 ## Deep-link risk
 

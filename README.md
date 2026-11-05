@@ -10,9 +10,9 @@ the `^handle` syntax. A wormhole joins two sessions on two machines; a thread
 is an open wormhole; `wormhole ask` opens one and `wormhole reply` travels
 back through it.
 
-Wormhole is an independent open-source project. Every team runs its own bus
-from the templates in `deploy/`; nothing here is hosted and there is no
-telemetry. Explicitly enabled update checks contact GitHub Releases only.
+Wormhole is an independent open-source project. Every team runs its own bus,
+embedded in the binary (`wormhole serve`) or from the templates in
+`deploy/`; nothing here is hosted and there is no telemetry. Explicitly enabled update checks contact GitHub Releases only.
 
 ## Status
 
@@ -60,51 +60,62 @@ message.
 
 ## Quick start
 
-On a VM every machine can reach:
+One machine hosts the bus; every other machine joins it with one command.
+No file is edited by hand.
+
+On alice's machine:
 
 ```
-cp deploy/nats/nats-server.conf.example /etc/nats/nats-server.conf
-cp deploy/nats/accounts.conf.example    /etc/nats/accounts.conf   # edit users and passwords
-nats-server -c /etc/nats/nats-server.conf
-wormhole admin init --url tls://bus.example.internal:4222 --user admin
+wormhole serve install --invite bob    # embedded NATS as a user service, this machine joined as alice, an invite for bob
 ```
 
-On each machine:
+Send bob the `wormhole join wh1...` line it printed. On bob's machine:
 
 ```
-go install github.com/yjmrobert/wormhole/cmd/wormhole@latest
-wormhole init                       # writes ~/.config/wormhole/config.yaml (mode 600)
-$EDITOR ~/.config/wormhole/config.yaml   # handle, bus.url, senders
-wormhole login                      # stores the bus password privately and checks the connection
-wormhole doctor
-systemctl --user enable --now wormhole   # see deploy/systemd/wormhole.service
+wormhole join wh1...                   # config, credential, skill, daemon service; alice may ask bob (inbox mode)
 ```
 
-Then, in a Copilot session with the `wormhole` skill installed:
+Then, in a Copilot session with the skill installed:
 
 > ask ^bob whether the retry policy in PR #123 is sane
+
+Try it alone first with `wormhole demo`: alice and bob on one machine,
+no server, no second person. Teams that want the bus on a VM instead of a
+laptop follow "Operating your own bus" in `docs/install.md`.
 
 ## CLI
 
 ```
+wormhole demo                                  # the round trip on this machine: no server, no second person
+wormhole serve [install] [--invite <handle>]   # host the bus: embedded NATS with TLS; install runs it as a user service
+wormhole serve invite|users|revoke <handle>    # mint a one-time invite, list users, remove one
+wormhole join <invite>                         # join a bus: config, credential, skill, daemon service
 wormhole ask <user> "<prompt>" [--repo owner/name] [--context "..."] [--session <id>] [--yes]
-wormhole reply <thread_id> "<text>"            # from inside a relayed session
-wormhole send <user> --thread <id> "<text>"    # free-form follow-up on an open thread
+wormhole reply <thread> "<text>"               # from inside a relayed session
+wormhole send <user> --thread <ref> "<text>"   # free-form follow-up on an open thread
 wormhole inbox [--watch|--ui] [--all]          # staged inbound messages waiting for you; --watch keeps it open in the terminal, --ui opens the page
-wormhole open <thread_id> [--agent] [--yes]    # read a staged message, confirm, run it in its session and show it; --agent uses the safe profile
-wormhole snooze <thread_id> [<duration>|off]   # hide a staged message until then; the daemon reminds you once
-wormhole decline <thread_id> ["<reason>"]      # pass on a staged message and tell the asker
+wormhole open <thread> [--agent] [--yes]       # read a staged message, confirm, run it in its session and show it; --agent uses the safe profile
+wormhole snooze <thread> [<duration>|off]      # hide a staged message until then; the daemon reminds you once
+wormhole decline <thread> ["<reason>"]         # pass on a staged message and tell the asker
 wormhole threads [--open] [--peer <user>]      # local thread map
 wormhole users                                 # handles on the bus, with presence
+wormhole senders [add|remove <handle> [--auto]] # who may ask you
 wormhole daemon [--once] [--pause|--resume]    # the subscriber; pause is the local kill switch
-wormhole doctor [--deep-link]                  # bus, creds, copilot, display, dead letters
+wormhole service install|status|uninstall      # the daemon as a systemd user service
+wormhole skill install|status [--agent <name>] # the skill in every detected agent
+wormhole doctor [--deep-link]                  # bus, creds, copilot, display, dead letters; every failure names its fix
+wormhole init [--no-input]                     # the config wizard (or flags for every question)
 wormhole login [--creds <file>]                # install credentials privately
-wormhole admin init --url <nats url>           # create the stream and registry bucket
+wormhole admin init --url <nats url>           # create the stream and registry bucket on a bus you run yourself
 wormhole completion bash|zsh|fish              # generate shell completion
 wormhole commands [--flags] [--json]           # discover commands and flags
 wormhole man                                   # generate the command manual
 wormhole update [--enable|--disable]           # update now or control daily checks
 ```
+
+A `<thread>` is a thread id, a unique prefix of one, or `^bob` (the newest
+open thread with bob; `^bob/2` the one before).
+
 
 Every command takes `--json`, `--config <path>`, and `--no-input`, and returns
 a stable exit code: 0 ok, 1 error, 2 usage, 3 refused, 4 not found, 5 bus or
@@ -123,7 +134,7 @@ app unavailable. `--no-input` never implies `--yes`.
 - Per-sender and daily caps on inbound asks; `max_hops` stops agent
   ping-pong.
 - Local kill switch (`wormhole daemon --pause`), server-side kill switch
-  (disable the user in `accounts.conf`).
+  (`wormhole serve revoke <handle>`, or disable the user in `accounts.conf`).
 - The daemon refuses a world-readable config or credentials inside a git
   working tree.
 

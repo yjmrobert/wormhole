@@ -4,7 +4,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(BUILD_DATE)
 
-.PHONY: build test e2e vet fmt lint leakcheck clean install docs release
+.PHONY: build test e2e demo vet fmt lint leakcheck clean install docs release
 
 build:
 	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/wormhole ./cmd/wormhole
@@ -17,6 +17,9 @@ test: vet
 
 e2e:
 	$(GO) test -race -v ./test/e2e/
+
+demo: build
+	./bin/wormhole demo
 
 vet:
 	$(GO) vet ./...

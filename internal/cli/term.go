@@ -34,7 +34,7 @@ func (a *App) confirm(prompt string) (bool, error) {
 		value := false
 		err := interactiveForm(in, out, huh.NewConfirm().Title(prompt).Value(&value)).Run()
 		if errors.Is(err, huh.ErrUserAborted) {
-			return false, fail(ExitRefused, "not confirmed")
+			return false, fail(ExitRefused, "not confirmed; nothing was done")
 		}
 		return value, err
 	}
@@ -53,7 +53,7 @@ func (a *App) readSecret(c *common, prompt string) (string, error) {
 	in, ok := a.Stdin.(*os.File)
 	if ok && isTerminal(in) {
 		if c.noInput {
-			return "", fail(ExitRefused, "--no-input forbids password prompts; use --password-file or provide credentials on stdin")
+			return "", fail(ExitRefused, "--no-input forbids password prompts; pass --password-file <file>, or pipe the password on stdin")
 		}
 		out, outOK := a.Stdout.(*os.File)
 		if !outOK || !isTerminal(out) {
@@ -66,7 +66,7 @@ func (a *App) readSecret(c *common, prompt string) (string, error) {
 		field := huh.NewInput().Title(strings.TrimSpace(prompt)).EchoMode(huh.EchoModePassword).Value(&value)
 		if err := interactiveForm(in, out, field).Run(); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
-				return "", fail(ExitRefused, "password prompt aborted")
+				return "", fail(ExitRefused, "password prompt aborted; nothing was saved")
 			}
 			return "", err
 		}
