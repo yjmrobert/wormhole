@@ -241,3 +241,88 @@ func TestRestartKeepsCAAndUsers(t *testing.T) {
 		t.Fatal("users.json holds a plaintext password")
 	}
 }
+
+// TestStartErrorsReturn checks that a start that fails after the listener
+// is up reports the error instead of hanging in Close.
+func TestStartErrorsReturn(t *testing.T) {
+	dir := t.TempDir()
+	s := start(t, dir)
+	s.Close()
+	// A stale admin secret no longer matches the stored hash.
+	if err := os.WriteFile(filepath.Join(dir, adminSecretFile), []byte("wrong\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := Start(context.Background(), Options{StateDir: dir, Listen: "127.0.0.1:0", Hostname: "alice-laptop", BcryptCost: bcrypt.MinCost})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "admin connection") {
+			t.Fatalf("start = %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("Start hung instead of returning the error")
+	}
+	// A CA with its key missing is refused, not silently replaced.
+	if err := os.Remove(filepath.Join(dir, caKeyFile)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Start(context.Background(), Options{StateDir: dir, Listen: "127.0.0.1:0", BcryptCost: bcrypt.MinCost}); err == nil || !strings.Contains(err.Error(), caKeyFile) {
+		t.Fatalf("half-present CA = %v", err)
+	}
+}
+
+// TestJoinUserCannotReadOtherInboxes checks the join user's ACL: it may
+// publish its request and read its own replies, nothing else.
+func TestJoinUserCannotReadOtherInboxes(t *testing.T) {
+	dir := t.TempDir()
+	s := start(t, dir)
+	tok, _, _ := Mint(dir, "bob", InviteOptions{BcryptCost: bcrypt.MinCost})
+	inv, _ := Decode(tok)
+	url := s.ClientURLs()[len(s.ClientURLs())-1]
+	ca := caFile(t, inv)
+	deadline := time.Now().Add(5 * time.Second)
+	var nc *natsgo.Conn
+	for {
+		var err error
+		nc, err = natsgo.Connect(url, natsgo.UserInfo(inv.JoinUser(), inv.Secret), natsgo.RootCAs(ca), natsgo.Timeout(time.Second))
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	defer nc.Close()
+	errCh := make(chan error, 4)
+	nc.SetErrorHandler(func(_ *natsgo.Conn, _ *natsgo.Subscription, err error) { errCh <- err })
+	for _, subj := range []string{"_INBOX.>", "_INBOX.alice.>", "wh.inbox.alice.>", "$WH.join.>"} {
+		if _, err := nc.SubscribeSync(subj); err != nil {
+			t.Fatal(err)
+		}
+		_ = nc.Flush()
+		select {
+		case err := <-errCh:
+			if !errors.Is(err, natsgo.ErrPermissionViolation) {
+				t.Fatalf("%s: %v", subj, err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("join user could subscribe to %s", subj)
+		}
+	}
+	if err := nc.Publish("wh.inbox.alice.bob", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	_ = nc.Flush()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, natsgo.ErrPermissionViolation) {
+			t.Fatalf("publish: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("join user could publish on an inbox subject")
+	}
+}

@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yjmrobert/wormhole/internal/config"
 )
 
 // TLS material lives next to the users file. The CA is generated once and
@@ -63,6 +65,14 @@ func loadOrCreateCA(dir string, now time.Time) (*ca, error) {
 	}
 	if !errors.Is(keyErr, os.ErrNotExist) && keyErr != nil {
 		return nil, keyErr
+	}
+	// One of the two is missing: generating a new CA would silently cut
+	// off every joined machine and void every invite.
+	if certErr == nil {
+		return nil, fmt.Errorf("%s exists but %s is missing; restore the key from a backup, or remove %s to start a new bus (every machine must join again)", certPath, keyPath, certPath)
+	}
+	if keyErr == nil {
+		return nil, fmt.Errorf("%s exists but %s is missing; restore the certificate from a backup, or remove %s to start a new bus (every machine must join again)", keyPath, certPath, keyPath)
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -185,7 +195,7 @@ func (c *ca) covers(leaf *x509.Certificate, dnsNames []string, ips []net.IP, now
 
 // writePEM writes one PEM block with private modes.
 func writePEM(path, typ string, der []byte) error {
-	return writePrivate(path, pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: der}))
+	return config.WritePrivate(path, pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: der}))
 }
 
 // parseCert decodes a PEM certificate.

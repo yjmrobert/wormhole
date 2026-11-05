@@ -131,6 +131,15 @@ func TestDemo(t *testing.T) {
 	if time.Since(start) > 10*time.Second {
 		t.Fatalf("demo took %s", time.Since(start))
 	}
+	// A failing demo under --json is one JSON object, not two.
+	f.out.Reset()
+	if code := f.run("demo", "--fast", "--json", "--timeout", "1ns"); code != ExitError {
+		t.Fatalf("demo timeout: %d", code)
+	}
+	var failed map[string]any
+	if err := json.Unmarshal(f.out.Bytes(), &failed); err != nil || failed["ok"] != false {
+		t.Fatalf("failed demo output = %q (%v)", f.out.String(), err)
+	}
 	f.out.Reset()
 	if code := f.run("demo", "--fast"); code != ExitOK || !strings.Contains(f.out.String(), "wormhole reply") || !strings.Contains(f.out.String(), "declined: taking it to standup") {
 		t.Fatalf("narrated demo: %d\n%s\n%s", code, f.out.String(), f.errOut.String())

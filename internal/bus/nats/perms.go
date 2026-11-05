@@ -6,6 +6,12 @@ import (
 	"github.com/yjmrobert/wormhole/internal/bus"
 )
 
+// InboxPrefix is the request/reply inbox prefix a user's connection uses
+// (natsgo.CustomInboxPrefix), so that users may subscribe only to their
+// own replies: the shared _INBOX.> wildcard would let any member read
+// every other member's JetStream deliveries.
+func InboxPrefix(user string) string { return "_INBOX." + user }
+
 // UserPermissions is the per-user ACL every Wormhole user gets, whether the
 // bus is `wormhole serve` or a nats-server configured from
 // deploy/nats/accounts.conf.example: publish only as oneself, subscribe
@@ -39,7 +45,7 @@ func UserPermissions(handle string) *server.Permissions {
 			bus.Prefix + "." + bus.KindInbox + "." + handle + ".>",
 			bus.Prefix + "." + bus.KindAck + "." + handle + ".>",
 			bus.DLQSubject(handle),
-			"_INBOX.>",
+			InboxPrefix(handle) + ".>",
 		}},
 	}
 }

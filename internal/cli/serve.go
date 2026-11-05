@@ -305,7 +305,7 @@ func (a *App) runServeInstall(ctx context.Context, c *common, f serveFlags, noJo
 	// Join this machine first so the invites carry its handle as `by`.
 	me := f.handle
 	if me == "" {
-		me = os.Getenv("USER")
+		me = defaultHandle(a.Getenv)
 	}
 	if !noJoin && running {
 		path := c.config

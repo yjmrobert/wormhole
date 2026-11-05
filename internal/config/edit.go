@@ -21,10 +21,27 @@ import (
 func Edit(path string, create bool, fn func(doc *yaml.Node) error) error {
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) && create {
-		raw = []byte(strings.ReplaceAll(Example, "~/.config/wormhole", filepath.Dir(path)))
+		raw = exampleFor(path)
 	} else if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
+	return editRaw(path, raw, fn)
+}
+
+// Create writes path from Example with fn applied, whatever is there now:
+// `wormhole init --force` means a fresh start, not an edit.
+func Create(path string, fn func(doc *yaml.Node) error) error {
+	return editRaw(path, exampleFor(path), fn)
+}
+
+// exampleFor is Example with its credential paths pointed at path's
+// directory.
+func exampleFor(path string) []byte {
+	return []byte(strings.ReplaceAll(Example, "~/.config/wormhole", filepath.Dir(path)))
+}
+
+// editRaw applies fn to a YAML document and writes it to path.
+func editRaw(path string, raw []byte, fn func(doc *yaml.Node) error) error {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)

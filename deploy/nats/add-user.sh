@@ -35,7 +35,7 @@ cat <<BLOCK
           ]
         }
         subscribe: {
-          allow: [ "wh.inbox.$handle.>", "wh.ack.$handle.>", "wh.dlq.$handle", "_INBOX.>" ]
+          allow: [ "wh.inbox.$handle.>", "wh.ack.$handle.>", "wh.dlq.$handle", "_INBOX.$handle.>" ]
         }
       }
     }

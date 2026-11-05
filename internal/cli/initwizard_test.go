@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/yjmrobert/wormhole/internal/config"
 )
 
@@ -46,6 +48,17 @@ func TestInitNoInputWritesValidConfig(t *testing.T) {
 	}
 	if st, _ := os.Stat(path); st.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %v", st.Mode())
+	}
+	// --force starts over from the example: a key the wizard does not
+	// set (the CA of a previous bus) does not survive.
+	if err := config.Edit(path, false, func(doc *yaml.Node) error { config.Set(doc, "bus.tls_ca", "/old/bus-ca.pem"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if code := app.Run(context.Background(), []string{"init", "--no-input", "--force", "--handle", "bob", "--url", "tls://public:4222", "--config", path}); code != ExitOK {
+		t.Fatalf("init --force: %d %s", code, errOut.String())
+	}
+	if cfg, _ := config.Load(path); cfg.Bus.TLSCA != "" || cfg.Bus.URL != "tls://public:4222" {
+		t.Fatalf("--force kept old keys: %+v", cfg.Bus)
 	}
 	// Exists: refused without --force, and the fix is named.
 	out.Reset()

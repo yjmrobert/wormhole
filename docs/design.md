@@ -391,7 +391,11 @@ message and is the only thing that crosses between machines by hand.
 
 The secret is not the user's bus password. It is the password of a
 temporary NATS user, `join-<id>`, allowed to do one thing: publish a
-request on `$WH.join.<id>`. `wormhole join` connects as that user over
+request on `$WH.join.<id>` and read the reply on its own inbox prefix.
+Every connection, join users and members alike, uses a per-user inbox
+prefix (`_INBOX.<user>`) and may subscribe only there; the shared
+`_INBOX.>` wildcard would let any member read every other member's
+JetStream deliveries and every join reply. `wormhole join` connects as that user over
 TLS, trusting the CA from the token, and asks for its credential. The
 server's responder checks the invite is known, unexpired and for that
 handle, generates the user's real password, adds the user with the

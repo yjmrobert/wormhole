@@ -93,4 +93,9 @@ func TestCompletionFallsBackToThreadPeers(t *testing.T) {
 	if len(values) != 1 {
 		t.Fatalf("prefix completion = %v", values)
 	}
+	// A closed thread is never offered.
+	values, _ = f.app.completeThreads(c, false)(cmd, nil, "01ARZ3NDEKTSV4RRFFQ69G5FAA")
+	if len(values) != 0 {
+		t.Fatalf("closed thread offered: %v", values)
+	}
 }

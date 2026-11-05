@@ -25,6 +25,7 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 
 	natsbus "github.com/yjmrobert/wormhole/internal/bus/nats"
+	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
@@ -76,8 +77,11 @@ type Server struct {
 
 	mu      sync.Mutex // serializes reloads and users.json writes
 	lastMod time.Time
-	stop    chan struct{}
-	done    chan struct{}
+	// watching is set once the users.json watcher runs, so Close knows
+	// whether to wait for it.
+	watching bool
+	stop     chan struct{}
+	done     chan struct{}
 }
 
 // Start brings the bus up: TLS material, users, the stream and the
@@ -121,6 +125,9 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The modification time is taken before the read: a write that lands
+	// during the read then shows up as a change at the next poll.
+	usersMod := modTime(usersPath(o.StateDir))
 	doc, err := loadUsers(o.StateDir)
 	if err != nil {
 		return nil, err
@@ -157,18 +164,15 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 		srv.Shutdown()
 		return nil, fmt.Errorf("nats did not start listening on %s; is the port in use? try: wormhole serve --listen :4223", o.Listen)
 	}
-	s := &Server{o: o, srv: srv, opts: opts, ca: authority, now: o.Now, log: o.Log, stop: make(chan struct{}), done: make(chan struct{})}
+	s := &Server{o: o, srv: srv, opts: opts, ca: authority, now: o.Now, log: o.Log, stop: make(chan struct{}), done: make(chan struct{}), lastMod: usersMod}
 	actual := port
 	if a, ok := srv.Addr().(*net.TCPAddr); ok {
 		actual = a.Port
 	}
 	s.urls = clientURLs(o.Hostname, dns, ips, actual)
-	if err := writePrivate(filepath.Join(o.StateDir, advertiseFile), []byte(strings.Join(s.urls, "\n")+"\n")); err != nil {
+	if err := config.WritePrivate(filepath.Join(o.StateDir, advertiseFile), []byte(strings.Join(s.urls, "\n")+"\n")); err != nil {
 		s.Close()
 		return nil, err
-	}
-	if st, err := os.Stat(usersPath(o.StateDir)); err == nil {
-		s.lastMod = st.ModTime()
 	}
 	nc, err := natsgo.Connect("", natsgo.InProcessServer(srv), natsgo.UserInfo(adminUser, adminPW), natsgo.Name("wormhole/serve"))
 	if err != nil {
@@ -184,6 +188,7 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 		s.Close()
 		return nil, fmt.Errorf("join responder: %w", err)
 	}
+	s.watching = true
 	go s.watch()
 	s.log.Info("bus listening", "urls", s.urls, "state", o.StateDir, "ca", s.ca.Fingerprint()[:16], "users", len(doc.Users), "invites", len(doc.Invites))
 	return s, nil
@@ -261,7 +266,7 @@ func ensureAdmin(stateDir string, cost int) (string, error) {
 		return "", err
 	}
 	doc.Admin.Hash = h
-	if err := writePrivate(secretPath, []byte(pw+"\n")); err != nil {
+	if err := config.WritePrivate(secretPath, []byte(pw+"\n")); err != nil {
 		return "", err
 	}
 	return pw, saveUsers(stateDir, doc)
@@ -283,7 +288,7 @@ func buildUsers(doc *usersDoc, now time.Time) []*server.User {
 			Password: inv.Hash,
 			Permissions: &server.Permissions{
 				Publish:   &server.SubjectPermission{Allow: []string{joinSubject(id)}},
-				Subscribe: &server.SubjectPermission{Allow: []string{"_INBOX.>"}},
+				Subscribe: &server.SubjectPermission{Allow: []string{natsbus.InboxPrefix(joinUserPrefix+id) + ".>"}},
 			},
 		})
 	}
@@ -293,6 +298,7 @@ func buildUsers(doc *usersDoc, now time.Time) []*server.User {
 // reload re-reads users.json and applies it to the running server. The
 // caller holds s.mu.
 func (s *Server) reload() error {
+	mod := modTime(usersPath(s.o.StateDir))
 	doc, err := loadUsers(s.o.StateDir)
 	if err != nil {
 		return err
@@ -302,10 +308,17 @@ func (s *Server) reload() error {
 	if err := s.srv.ReloadOptions(&opts); err != nil {
 		return err
 	}
-	if st, err := os.Stat(usersPath(s.o.StateDir)); err == nil {
-		s.lastMod = st.ModTime()
-	}
+	s.lastMod = mod
 	return nil
+}
+
+// modTime is a file's modification time, zero when it does not exist.
+func modTime(path string) time.Time {
+	st, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return st.ModTime()
 }
 
 // watch reloads the user list when users.json changes and prunes expired
@@ -442,7 +455,9 @@ func (s *Server) Close() {
 	case <-s.stop:
 	default:
 		close(s.stop)
-		<-s.done
+		if s.watching {
+			<-s.done
+		}
 	}
 	if s.admin != nil {
 		s.admin.Close()
@@ -523,6 +538,7 @@ func redeemOnce(ctx context.Context, inv Invite, caFile, host string) (Redeemed,
 	nc, err := natsgo.Connect(strings.Join(inv.URLs, ","),
 		natsgo.Name("wormhole/join"),
 		natsgo.UserInfo(inv.JoinUser(), inv.Secret),
+		natsgo.CustomInboxPrefix(natsbus.InboxPrefix(inv.JoinUser())),
 		natsgo.RootCAs(caFile),
 		natsgo.Timeout(5*time.Second),
 		natsgo.NoReconnect(),
@@ -593,7 +609,7 @@ func Prepare(o Options) ([]string, error) {
 	}
 	dns, ips := localNames(o.Hostname, o.Advertise)
 	urls := clientURLs(o.Hostname, dns, ips, port)
-	if err := writePrivate(filepath.Join(o.StateDir, advertiseFile), []byte(strings.Join(urls, "\n")+"\n")); err != nil {
+	if err := config.WritePrivate(filepath.Join(o.StateDir, advertiseFile), []byte(strings.Join(urls, "\n")+"\n")); err != nil {
 		return nil, err
 	}
 	return urls, nil

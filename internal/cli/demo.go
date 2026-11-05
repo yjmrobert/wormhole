@@ -114,7 +114,7 @@ func (a *App) newDemoCommand(c *common) *cobra.Command {
 		ok := err == nil
 		a.emit(c, map[string]any{"ok": ok, "steps": steps}, func(io.Writer) {})
 		if err != nil {
-			return wrap(ExitError, err)
+			return &exitError{code: ExitError, err: err, silent: c.json}
 		}
 		return nil
 	}

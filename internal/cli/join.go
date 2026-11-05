@@ -122,10 +122,15 @@ func (a *App) joinWithInvite(ctx context.Context, c *common, token string, o joi
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return joinResult{}, err
 	}
+	// The CA lands next to the config only once the exchange succeeded;
+	// until then a failed join must not touch the trust anchor of a bus
+	// this machine is already on.
 	caPath := filepath.Join(dir, caFileName)
-	if err := config.WritePrivate(caPath, serve.CAPEM(inv.CADER())); err != nil {
+	caTmp := filepath.Join(dir, "."+caFileName+".join")
+	if err := config.WritePrivate(caTmp, serve.CAPEM(inv.CADER())); err != nil {
 		return joinResult{}, err
 	}
+	defer os.Remove(caTmp)
 	host := o.hostname
 	if host == "" {
 		host = a.Hostname
@@ -135,12 +140,15 @@ func (a *App) joinWithInvite(ctx context.Context, c *common, token string, o joi
 	if timeout == 0 {
 		timeout = joinTimeout
 	}
-	red, err := serve.Redeem(ctx, inv, caPath, host, timeout)
+	red, err := serve.Redeem(ctx, inv, caTmp, host, timeout)
 	if err != nil {
 		if errors.Is(err, serve.ErrRefused) {
 			return joinResult{}, fail(ExitRefused, "%v", err)
 		}
 		return joinResult{}, fail(ExitUnavailable, "could not reach the bus (%v); is wormhole serve running on %s? ask %s to check: wormhole serve users", err, firstHost(inv.URLs), by)
+	}
+	if err := os.Rename(caTmp, caPath); err != nil {
+		return joinResult{}, err
 	}
 	pwPath := filepath.Join(dir, passwordFileName)
 	if err := config.WritePrivate(pwPath, []byte(red.Password+"\n")); err != nil {

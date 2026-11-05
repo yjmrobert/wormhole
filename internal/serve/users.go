@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/yjmrobert/wormhole/internal/config"
 	"github.com/yjmrobert/wormhole/internal/envelope"
 )
 
@@ -106,31 +108,7 @@ func saveUsers(stateDir string, doc *usersDoc) error {
 	if err != nil {
 		return err
 	}
-	return writePrivate(usersPath(stateDir), append(raw, '\n'))
-}
-
-// writePrivate writes a file readable by the owner only, atomically.
-func writePrivate(path string, content []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(content); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return config.WritePrivate(usersPath(stateDir), append(raw, '\n'))
 }
 
 // newSecret returns secretBytes of randomness, base64 encoded.
@@ -307,8 +285,8 @@ func readAdvertise(stateDir string) ([]string, error) {
 		return nil, err
 	}
 	var urls []string
-	for _, line := range splitLines(string(raw)) {
-		if line != "" {
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
 			urls = append(urls, line)
 		}
 	}
@@ -316,21 +294,4 @@ func readAdvertise(stateDir string) ([]string, error) {
 		return nil, errors.New("no advertised addresses recorded; run: wormhole serve")
 	}
 	return urls, nil
-}
-
-// splitLines splits on newlines and trims each line.
-func splitLines(s string) []string {
-	var out []string
-	start := 0
-	for i := 0; i <= len(s); i++ {
-		if i == len(s) || s[i] == '\n' {
-			line := s[start:i]
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			out = append(out, line)
-			start = i + 1
-		}
-	}
-	return out
 }

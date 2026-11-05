@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -313,5 +314,39 @@ func TestServeForegroundAndInstall(t *testing.T) {
 	code, res = j.run("serve", "install", "--listen", "127.0.0.1:"+port, "--config", j.cfgPath)
 	if code != ExitOK || res["joined"] != nil {
 		t.Fatalf("second install: %d %v", code, res)
+	}
+}
+
+// TestJoinFailureKeepsTrustAnchor checks that a refused join leaves the
+// CA of the bus this machine is already on untouched.
+func TestJoinFailureKeepsTrustAnchor(t *testing.T) {
+	j := newJoinApp(t)
+	startBus(t)
+	code, res := j.run("serve", "invite", "bob", "--by", "alice")
+	if code != ExitOK {
+		t.Fatalf("invite: %d", code)
+	}
+	if code, _ := j.run("join", res["token"].(string), "--config", j.cfgPath); code != ExitOK {
+		t.Fatalf("join: %d %s", code, j.errOut.String())
+	}
+	caPath := filepath.Join(filepath.Dir(j.cfgPath), "bus-ca.pem")
+	before, _ := os.ReadFile(caPath)
+	cfgBefore, _ := os.ReadFile(j.cfgPath)
+	// An invite from a different bus that cannot be reached.
+	inv, _ := serve.Decode(res["token"].(string))
+	inv.ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	inv.URLs = []string{"tls://127.0.0.1:1"}
+	inv.CA = base64.StdEncoding.EncodeToString([]byte("not the same ca"))
+	_, err := j.app.joinWithInvite(context.Background(), &common{config: j.cfgPath}, serve.Encode(inv), joinOptions{timeout: time.Second}, nil)
+	if err == nil {
+		t.Fatal("join to a dead bus succeeded")
+	}
+	after, _ := os.ReadFile(caPath)
+	cfgAfter, _ := os.ReadFile(j.cfgPath)
+	if string(after) != string(before) || string(cfgAfter) != string(cfgBefore) {
+		t.Fatal("a failed join changed the CA or the config")
+	}
+	if entries, _ := os.ReadDir(filepath.Dir(j.cfgPath)); len(entries) != 3 {
+		t.Fatalf("leftover files: %v", entries)
 	}
 }

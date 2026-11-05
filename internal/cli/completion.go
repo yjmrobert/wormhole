@@ -27,13 +27,15 @@ func (a *App) completeThreads(c *common, stagedOnly bool) cobra.CompletionFunc {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		defer store.Close()
-		all, err := store.List(ctx, threads.Filter{})
+		// Only threads that still expect traffic: a closed or declined
+		// one would be refused by the command anyway.
+		open, err := store.List(ctx, threads.Filter{Open: true})
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		refs := threadRefs(all)
+		refs := threadRefs(open)
 		var values []string
-		for _, thread := range all {
+		for _, thread := range open {
 			if stagedOnly && thread.StagedKickoff == "" {
 				continue
 			}

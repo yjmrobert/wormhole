@@ -282,7 +282,7 @@ func writeInitConfig(path string, ans initAnswers, getenv func(string) string) (
 			return res, fail(ExitUsage, "^%s is you; --senders lists the other people", h)
 		}
 	}
-	err := config.Edit(path, true, func(doc *yaml.Node) error {
+	err := config.Create(path, func(doc *yaml.Node) error {
 		config.Set(doc, "handle", ans.Handle)
 		config.Set(doc, "bus.kind", "nats")
 		config.Set(doc, "bus.url", ans.URL)
@@ -304,8 +304,6 @@ func writeInitConfig(path string, ans initAnswers, getenv func(string) string) (
 	if err != nil {
 		return res, wrap(ExitError, err)
 	}
-	// An existing file was overwritten with --force: Edit kept nothing
-	// from it on purpose, the person asked for a fresh start.
 	res.Handle, res.URL = ans.Handle, ans.URL
 	if ans.Creds == "" {
 		if _, err := os.Stat(config.Expand(firstNonEmpty(ans.PasswordFile, filepath.Join(dir, passwordFileName)))); err != nil {

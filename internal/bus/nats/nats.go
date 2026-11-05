@@ -85,6 +85,9 @@ func Connect(ctx context.Context, o Options) (*Bus, error) {
 	}
 	opts := []natsgo.Option{
 		natsgo.Name("wormhole/" + o.User),
+		// Replies go to a per-user inbox, the only one the ACL lets this
+		// user subscribe to.
+		natsgo.CustomInboxPrefix(InboxPrefix(o.User)),
 		natsgo.MaxReconnects(-1),
 		natsgo.ReconnectWait(2 * time.Second),
 		natsgo.Timeout(10 * time.Second),
